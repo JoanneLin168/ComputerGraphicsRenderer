@@ -1,7 +1,9 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\libs",
+    "\\libs\\glm-0.9.7.2",
+    "\\src"
   ],
-  "SelectedNode": "\\CMakeLists.txt",
   "PreviewInSolutionExplorer": false
 }
