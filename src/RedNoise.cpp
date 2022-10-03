@@ -9,6 +9,20 @@
 #define WIDTH 320
 #define HEIGHT 240
 
+// Template
+void draw(DrawingWindow& window) {
+	window.clearPixels();
+	for (size_t y = 0; y < window.height; y++) {
+		for (size_t x = 0; x < window.width; x++) {
+			float red = rand() % 256;
+			float green = 0.0;
+			float blue = 0.0;
+			uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
+			window.setPixelColour(x, y, colour);
+		}
+	}
+}
+
 // Week 2 - Task 3
 void draw(DrawingWindow &window, std::vector<float> pixels) {
 	window.clearPixels();
@@ -17,6 +31,20 @@ void draw(DrawingWindow &window, std::vector<float> pixels) {
 			float red = pixels[x];
 			float green = pixels[x];
 			float blue = pixels[x];
+			uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
+			window.setPixelColour(x, y, colour);
+		}
+	}
+}
+
+// Week 2 - Task 5
+void draw(DrawingWindow& window, std::vector<std::vector<glm::vec3>> pixels) {
+	window.clearPixels();
+	for (size_t y = 0; y < window.height; y++) {
+		for (size_t x = 0; x < window.width; x++) {
+			float red = pixels[y][x][0];
+			float green = pixels[y][x][1];
+			float blue = pixels[y][x][2];
 			uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
 			window.setPixelColour(x, y, colour);
 		}
@@ -74,41 +102,41 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 	std::vector<float> result;
 
+	// Week 2 - Task 3
 	result = interpolateSingleFloats(255.0, 0.0, WIDTH);
-	// for (size_t i = 0; i < result.size(); i++) std::cout << result[i] << " ";
-	// std::cout << std::endl;
 
+	// Week 2 - Task 4
 	glm::vec3 from(1.0, 4.0, 9.2);
 	glm::vec3 to(4.0, 1.0, 9.8);
 	std::vector<glm::vec3> result2 = interpolateThreeElementValues(from, to, 4);
-	for (size_t i = 0; i < result2.size(); i++) {
-		glm::vec3 vector = result2[i];
-		float r = vector[0];
-		float g = vector[1];
-		float b = vector[2];
+
+	// Week 2 - Task 5
+	glm::vec3 topLeft(255, 0, 0);        // red 
+	glm::vec3 topRight(0, 0, 255);       // blue 
+	glm::vec3 bottomRight(0, 255, 0);    // green 
+	glm::vec3 bottomLeft(255, 255, 0);   // yellow
+
+	// Get interpolation of left and right edges - to interpolate for every vector
+	std::vector<glm::vec3> left = interpolateThreeElementValues(topLeft, bottomLeft, WIDTH);
+	std::vector<glm::vec3> right = interpolateThreeElementValues(topRight, bottomRight, WIDTH);
+
+	// Interpolate every row from left to right
+	std::vector<std::vector<glm::vec3>> pixels;
+	for (int i = 0; i < WIDTH; i++) {
+		glm::vec3 firstPixel = left[i];
+		glm::vec3 lastPixel = right[i];
+		std::vector<glm::vec3> row = interpolateThreeElementValues(firstPixel,lastPixel, WIDTH);
+
+		pixels.push_back(row);
 	}
-	std::cout << std::endl;
-
-	// Create array of 2d vectors (each vector will have 3 vectors for R, G, B)
-	//std::vector<std::vector<float>> pixels;
-	//for (int i = 0; i < WIDTH; i++) {
-	//	float pixelValue = result[i];
-
-	//	// Create an RGB pixel
-	//	std::vector<float> pixel;
-	//	for (int j = 0; j < 3; j++) {
-	//		pixel.push_back(pixelValue);
-	//	}
-	//	pixel.shrink_to_fit(); // Shrinks the vector
-
-	//	// Add RGB pixel to pixels
-	//	pixels.push_back(pixel);
-	//}
+	pixels.shrink_to_fit();
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-		draw(window, result);
+		//draw(); // template
+		//draw(window, result); // Task 3
+		draw(window, pixels); // Task 5
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}
