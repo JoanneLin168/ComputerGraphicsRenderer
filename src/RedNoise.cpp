@@ -4,9 +4,12 @@
 #include <fstream>
 #include <vector>
 
+#include <glm/glm.hpp> // Week 2 - Task 4
+
 #define WIDTH 320
 #define HEIGHT 240
 
+// Week 2 - Task 3
 void draw(DrawingWindow &window, std::vector<float> pixels) {
 	window.clearPixels();
 	for (size_t y = 0; y < window.height; y++) {
@@ -48,6 +51,24 @@ std::vector<float> interpolateSingleFloats(float from, float to, int numberOfVal
 	return result;
 }
 
+// Week 2 - Task 4
+std::vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, int numberOfValues) {
+	std::vector<glm::vec3> result;
+	glm::vec3 diff = to - from;
+	float scale = (float) 1 / ((float)numberOfValues - 1);
+	glm::vec3 increments = diff * scale;
+
+	for (float i = 0; i < numberOfValues; i++) {
+		glm::vec3 toAdd = increments * i;
+		result.push_back(from + toAdd);
+	}
+
+	// Shrinks the vector
+	result.shrink_to_fit();
+
+	return result;
+}
+
 int main(int argc, char *argv[]) {
 	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
@@ -56,6 +77,17 @@ int main(int argc, char *argv[]) {
 	result = interpolateSingleFloats(255.0, 0.0, WIDTH);
 	// for (size_t i = 0; i < result.size(); i++) std::cout << result[i] << " ";
 	// std::cout << std::endl;
+
+	glm::vec3 from(1.0, 4.0, 9.2);
+	glm::vec3 to(4.0, 1.0, 9.8);
+	std::vector<glm::vec3> result2 = interpolateThreeElementValues(from, to, 4);
+	for (size_t i = 0; i < result2.size(); i++) {
+		glm::vec3 vector = result2[i];
+		float r = vector[0];
+		float g = vector[1];
+		float b = vector[2];
+	}
+	std::cout << std::endl;
 
 	// Create array of 2d vectors (each vector will have 3 vectors for R, G, B)
 	//std::vector<std::vector<float>> pixels;
