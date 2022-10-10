@@ -5,6 +5,8 @@
 #include <vector>
 
 #include <glm/glm.hpp> // Week 2 - Task 4
+#include <CanvasPoint.h> // Week 3 - Task 2
+#include <Colour.h> // Week 3 - Task 2
 
 #define WIDTH 320
 #define HEIGHT 240
@@ -51,6 +53,27 @@ void draw(DrawingWindow& window, std::vector<std::vector<glm::vec3>> pixels) {
 	}
 }
 
+// Week 3 - Task 2
+void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour) {
+	std::vector<Colour> result;
+	float xDiff = to.x - from.x;
+	float yDiff = to.y - from.y;
+	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
+
+	float xIncrement = xDiff / numberOfValues;
+	float yIncrement = yDiff / numberOfValues;
+
+	for (float i = 0; i < numberOfValues; i++) {
+		size_t x = size_t(from.x + (xIncrement * i));
+		float y = from.y + (yIncrement * i);
+		int red = colour.red;
+		int green = colour.green;
+		int blue = colour.blue;
+		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
+		window.setPixelColour(x, y, colour);
+	}
+}
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
@@ -63,80 +86,21 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 	}
 }
 
-// Week 2 - Task 2
-std::vector<float> interpolateSingleFloats(float from, float to, int numberOfValues) {
-	std::vector<float> result;
-	float diff = to - from;
-	float increments = diff / (numberOfValues-1);
-
-	for (int i = 0; i < numberOfValues; i++) {
-		result.push_back(from + (i * increments));
-	}
-
-	// Shrinks the vector
-	result.shrink_to_fit();
-
-	return result;
-}
-
-// Week 2 - Task 4
-std::vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, int numberOfValues) {
-	std::vector<glm::vec3> result;
-	glm::vec3 diff = to - from;
-	float scale = (float) 1 / ((float)numberOfValues - 1);
-	glm::vec3 increments = diff * scale;
-
-	for (float i = 0; i < numberOfValues; i++) {
-		glm::vec3 toAdd = increments * i;
-		result.push_back(from + toAdd);
-	}
-
-	// Shrinks the vector
-	result.shrink_to_fit();
-
-	return result;
-}
-
 int main(int argc, char *argv[]) {
 	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
-	std::vector<float> result;
-
-	// Week 2 - Task 3
-	result = interpolateSingleFloats(255.0, 0.0, WIDTH);
-
-	// Week 2 - Task 4
-	glm::vec3 from(1.0, 4.0, 9.2);
-	glm::vec3 to(4.0, 1.0, 9.8);
-	std::vector<glm::vec3> result2 = interpolateThreeElementValues(from, to, 4);
-
-	// Week 2 - Task 5
-	glm::vec3 topLeft(255, 0, 0);        // red 
-	glm::vec3 topRight(0, 0, 255);       // blue 
-	glm::vec3 bottomRight(0, 255, 0);    // green 
-	glm::vec3 bottomLeft(255, 255, 0);   // yellow
-
-	// Get interpolation of left and right edges - to interpolate for every vector
-	std::vector<glm::vec3> left = interpolateThreeElementValues(topLeft, bottomLeft, WIDTH);
-	std::vector<glm::vec3> right = interpolateThreeElementValues(topRight, bottomRight, WIDTH);
-
-	// Interpolate every row from left to right
-	std::vector<std::vector<glm::vec3>> pixels;
-	for (int i = 0; i < WIDTH; i++) {
-		glm::vec3 firstPixel = left[i];
-		glm::vec3 lastPixel = right[i];
-		std::vector<glm::vec3> row = interpolateThreeElementValues(firstPixel,lastPixel, WIDTH);
-
-		pixels.push_back(row);
-	}
-	pixels.shrink_to_fit();
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-		//draw(); // template
-		//draw(window, result); // Task 3
-		draw(window, pixels); // Task 5
+		CanvasPoint from = CanvasPoint(0, 0);
+		CanvasPoint to = CanvasPoint(WIDTH, HEIGHT);
+		Colour colour = Colour(255, 0, 0);
+		drawLine(window, from, to, colour);
+		CanvasPoint from2 = CanvasPoint(WIDTH/2, 0);
+		CanvasPoint to2 = CanvasPoint(WIDTH/2, HEIGHT);
+		Colour colour2 = Colour(0, 255, 0);
+		drawLine(window, from2, to2, colour2);
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}
