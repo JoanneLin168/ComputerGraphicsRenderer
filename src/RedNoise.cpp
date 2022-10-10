@@ -65,7 +65,7 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 
 	for (float i = 0; i < numberOfValues; i++) {
 		size_t x = size_t(from.x + (xIncrement * i));
-		float y = from.y + (yIncrement * i);
+		size_t y = size_t(from.y + (yIncrement * i));
 		int red = colour.red;
 		int green = colour.green;
 		int blue = colour.blue;
