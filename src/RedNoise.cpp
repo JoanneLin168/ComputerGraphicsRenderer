@@ -32,9 +32,9 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	float xIncrement = xDiff / numberOfValues;
 	float yIncrement = yDiff / numberOfValues;
 
-	for (float i = 0; i <= numberOfValues; i++) {
-		size_t x = size_t(from.x) + size_t((xIncrement * i));
-		size_t y = size_t(from.y) + size_t((yIncrement * i));
+	for (float i = 0; i < numberOfValues; i++) {
+		float x = from.x + long(xIncrement * i);
+		float y = from.y + long(yIncrement * i);
 		result.push_back(CanvasPoint(x, y));
 	}
 	result.shrink_to_fit();
@@ -51,14 +51,14 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	float xIncrement = xDiff / numberOfValues;
 	float yIncrement = yDiff / numberOfValues;
 
-	for (float i = 0; i <= numberOfValues; i++) {
-		size_t x = size_t(from.x) + size_t((xIncrement * i));
-		size_t y = size_t(from.y) + size_t((yIncrement * i));
+	for (float i = 0; i < numberOfValues; i++) {
+		float x = from.x + long(xIncrement * i);
+		float y = from.y + long(yIncrement * i);
 		int red = colour.red;
 		int green = colour.green;
 		int blue = colour.blue;
 		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
-		window.setPixelColour(x, y, colour);
+		window.setPixelColour(round(x), ceil(y), colour);
 	}
 }
 
@@ -123,15 +123,16 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	for (int i = 0; i < pointsAToC.size(); i++) {
 		drawLine(window, pointsAToC[i], pointsAToD[i], colour);
 	}
-	for (int i = 0; i < pointsBToC.size()-1; i++) {
+	for (int i = 0; i < pointsBToC.size(); i++) {
 		drawLine(window, pointsBToC[i], pointsBToD[i], colour);
 	}
+	drawLine(window, barrierStart, barrierEnd, colour);
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
 }
 
 CanvasPoint createRandomPoint() {
-	int x = rand() % WIDTH;
-	int y = rand() % HEIGHT;
+	float x = rand() % WIDTH;
+	float y = rand() % HEIGHT;
 	return CanvasPoint(x, y);
 }
 
@@ -185,7 +186,6 @@ int main(int argc, char *argv[]) {
 		CanvasPoint c = CanvasPoint(w/2, h);
 		Colour colour = Colour(255, 0, 0);
 		drawTriangle(window, a, b, c, colour);*/
-
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
