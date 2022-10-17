@@ -8,6 +8,10 @@
 #include <CanvasPoint.h> // Week 3 - Task 2
 #include <Colour.h> // Week 3 - Task 2
 #include <CanvasTriangle.h> // Week 3 - Task 3
+#include <string>
+#include <ModelTriangle.h> // Week 4 - Task 2
+#include <iostream> // Week 4 - Task 2
+#include <fstream> // Week 4 - Task 2
 
 #define WIDTH 320
 #define HEIGHT 240
@@ -84,7 +88,7 @@ std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
 	return sortedTrianglePoints;
 }
 
-// Week 4 - Task 4
+// Week 3 - Task 4
 void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour colour) {
 	// start off by cutting triangle horizontally so there are two flat bottom triangles
 	// fill each triangle from the line
@@ -130,6 +134,56 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
 }
 
+// Week 4 - Task 2
+void readModelFile(std::string filename, float scaleFactor) {
+	std::ifstream modelFile(filename);
+	std::string line;
+
+	// Instantiate vectors
+	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> facets;
+	glm::vec3 temp(0.0, 0.0, 0.0);
+	vertices.push_back(temp);
+
+	// Add vertices and facets to vectors
+	while (std::getline(modelFile, line)) {
+		// Output the text from the file
+		//std::cout << line << std::endl;
+		if (line[0] == 'v') {
+			std::vector<std::string> verticesStr = split(line, ' ');
+			std::vector<float> vs_vector;
+			for (std::string v : verticesStr) {
+				vs_vector.push_back(std::stof(v) * scaleFactor);
+			}
+			vs_vector.shrink_to_fit();
+
+			// Create vec3
+			glm::vec3 vs(vs_vector[0], vs_vector[1], vs_vector[2]);
+			vertices.push_back(vs);
+		}
+		else if (line[0] == 'f') {
+			std::vector<std::string> facetsStr = split(line, '/ '); // continue here
+			std::vector<int> fs_vector;
+			for (std::string f : facetsStr) {
+				fs_vector.push_back(std::stof(f) * scaleFactor);
+			}
+			fs_vector.shrink_to_fit();
+
+			// Create vec3
+			glm::vec3 vs(fs_vector[0], fs_vector[1], fs_vector[2]);
+			facets.push_back(vs);
+		}
+	}
+
+	vertices.shrink_to_fit();
+	facets.shrink_to_fit();
+
+	// Display model
+
+	modelFile.close();
+}
+
+// Generate Random objects
 CanvasPoint createRandomPoint() {
 	float x = rand() % WIDTH;
 	float y = rand() % HEIGHT;
@@ -186,6 +240,10 @@ int main(int argc, char *argv[]) {
 		CanvasPoint c = CanvasPoint(w/2, h);
 		Colour colour = Colour(255, 0, 0);
 		drawTriangle(window, a, b, c, colour);*/
+
+		// Week 4 - Task 2
+		std::string filename = "cornell-box.obj";
+		readModelFile(filename, 0.35);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
