@@ -134,9 +134,9 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
 }
 
-// Week 4 - Task 2
-void readModelFile(std::string filename, float scaleFactor) {
-	std::ifstream modelFile(filename);
+// Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
+std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> readOBJFile(std::string filename, float scaleFactor) {
+	std::ifstream file(filename);
 	std::string line;
 
 	// Instantiate vectors
@@ -146,41 +146,62 @@ void readModelFile(std::string filename, float scaleFactor) {
 	vertices.push_back(temp);
 
 	// Add vertices and facets to vectors
-	while (std::getline(modelFile, line)) {
+	while (std::getline(file, line)) {
 		// Output the text from the file
 		//std::cout << line << std::endl;
 		if (line[0] == 'v') {
 			std::vector<std::string> verticesStr = split(line, ' ');
-			std::vector<float> vs_vector;
-			for (std::string v : verticesStr) {
-				vs_vector.push_back(std::stof(v) * scaleFactor);
-			}
-			vs_vector.shrink_to_fit();
-
-			// Create vec3
-			glm::vec3 vs(vs_vector[0], vs_vector[1], vs_vector[2]);
+			glm::vec3 vs(std::stof(verticesStr[1])*scaleFactor, std::stof(verticesStr[2])*scaleFactor, std::stof(verticesStr[3])*scaleFactor);
 			vertices.push_back(vs);
 		}
 		else if (line[0] == 'f') {
 			std::vector<std::string> facetsStr = split(line, '/ '); // continue here
-			std::vector<int> fs_vector;
-			for (std::string f : facetsStr) {
-				fs_vector.push_back(std::stof(f) * scaleFactor);
-			}
-			fs_vector.shrink_to_fit();
-
-			// Create vec3
-			glm::vec3 vs(fs_vector[0], fs_vector[1], fs_vector[2]);
-			facets.push_back(vs);
+			glm::vec3 fs(std::stoi(facetsStr[1])*scaleFactor, std::stoi(facetsStr[2])*scaleFactor, std::stoi(facetsStr[3])*scaleFactor);
+			facets.push_back(fs);
 		}
 	}
 
 	vertices.shrink_to_fit();
 	facets.shrink_to_fit();
 
-	// Display model
+	file.close();
 
-	modelFile.close();
+	return std::make_pair(vertices, facets);
+}
+
+// Week 4 - Task 3: Read mtl
+std::vector<Colour> readMTLFile(std::string filename) {
+	std::ifstream file(filename);
+	std::string line;
+
+	// Instantiate vectors
+	std::vector<Colour> colours;
+	int index = 0;
+
+	// Add vertices and facets to vectors
+	while (std::getline(file, line)) {
+		// Output the text from the file
+		//std::cout << line << std::endl;
+		if (split(line, ' ')[0] == "newmtl") {
+			std::vector<std::string> colourName = split(line, ' ');
+			Colour colour = Colour(0, 0, 0);
+			colour.name = colourName[1];
+			colours.push_back(colour);
+		}
+		else if (line[0] == 'Kd') {
+			std::vector<std::string> rgbStr = split(line, 'Kd'); // continue here
+			int r = round(std::stof(rgbStr[1]) * 255);
+			int g = round(std::stof(rgbStr[2]) * 255);
+			int b = round(std::stof(rgbStr[3]) * 255);
+			index++;
+		}
+	}
+
+	colours.shrink_to_fit();
+
+	file.close();
+
+	return;
 }
 
 // Generate Random objects
@@ -243,7 +264,7 @@ int main(int argc, char *argv[]) {
 
 		// Week 4 - Task 2
 		std::string filename = "cornell-box.obj";
-		readModelFile(filename, 0.35);
+		readOBJFile(filename, 0.35);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
