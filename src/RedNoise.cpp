@@ -12,6 +12,7 @@
 #include <ModelTriangle.h> // Week 4 - Task 2
 #include <iostream> // Week 4 - Task 2
 #include <fstream> // Week 4 - Task 2
+#include <unordered_map> // Week 4 - Task 3
 
 #define WIDTH 320
 #define HEIGHT 240
@@ -24,6 +25,74 @@ void clearWindow(DrawingWindow& window) {
 			window.setPixelColour(x, y, colour);
 		}
 	}
+}
+
+// Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
+std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> readOBJFile(std::string filename, float scaleFactor) {
+	std::ifstream file(filename);
+	std::string line;
+
+	// Instantiate vectors
+	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> facets;
+	glm::vec3 temp(0.0, 0.0, 0.0);
+	vertices.push_back(temp);
+
+	// Add vertices and facets to vectors
+	while (std::getline(file, line)) {
+		// Output the text from the file
+		//std::cout << line << std::endl;
+		if (line[0] == 'v') {
+			std::vector<std::string> verticesStr = split(line, ' ');
+			glm::vec3 vs(std::stof(verticesStr[1]) * scaleFactor, std::stof(verticesStr[2]) * scaleFactor, std::stof(verticesStr[3]) * scaleFactor);
+			vertices.push_back(vs);
+		}
+		else if (line[0] == 'f') {
+			std::vector<std::string> facetsStr = split(line, '/ '); // continue here
+			glm::vec3 fs(std::stoi(facetsStr[1]) * scaleFactor, std::stoi(facetsStr[2]) * scaleFactor, std::stoi(facetsStr[3]) * scaleFactor);
+			facets.push_back(fs);
+		}
+	}
+
+	vertices.shrink_to_fit();
+	facets.shrink_to_fit();
+
+	file.close();
+
+	return std::make_pair(vertices, facets);
+}
+
+// Week 4 - Task 3: Read mtl
+std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
+	std::ifstream file(filename);
+	std::string line;
+
+	// Instantiate vectors
+	std::unordered_map<std::string, Colour> coloursMap;
+
+	// Add colours to hashmap
+	std::string colourName = ""; // will be updated every time "newmtl" is read
+	while (std::getline(file, line)) {
+		// Output the text from the file
+		//std::cout << line << std::endl;
+		if (split(line, ' ')[0] == "newmtl") {
+			std::vector<std::string> colourNameStr = split(line, ' ');
+			colourName = colourNameStr[1];
+		}
+		else if (split(line, ' ')[0] == "Kd") {
+			std::vector<std::string> rgbStr = split(line, ' '); // continue here
+			int r = round(std::stof(rgbStr[1]) * 255);
+			int g = round(std::stof(rgbStr[2]) * 255);
+			int b = round(std::stof(rgbStr[3]) * 255);
+
+			Colour colour = Colour(r, g, b);
+			colour.name = colourName;
+			coloursMap[colourName] = colour;
+		}
+	}
+	file.close();
+
+	return coloursMap;
 }
 
 // Week 3 - Task 4
@@ -134,75 +203,7 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
 }
 
-// Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
-std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> readOBJFile(std::string filename, float scaleFactor) {
-	std::ifstream file(filename);
-	std::string line;
 
-	// Instantiate vectors
-	std::vector<glm::vec3> vertices;
-	std::vector<glm::vec3> facets;
-	glm::vec3 temp(0.0, 0.0, 0.0);
-	vertices.push_back(temp);
-
-	// Add vertices and facets to vectors
-	while (std::getline(file, line)) {
-		// Output the text from the file
-		//std::cout << line << std::endl;
-		if (line[0] == 'v') {
-			std::vector<std::string> verticesStr = split(line, ' ');
-			glm::vec3 vs(std::stof(verticesStr[1])*scaleFactor, std::stof(verticesStr[2])*scaleFactor, std::stof(verticesStr[3])*scaleFactor);
-			vertices.push_back(vs);
-		}
-		else if (line[0] == 'f') {
-			std::vector<std::string> facetsStr = split(line, '/ '); // continue here
-			glm::vec3 fs(std::stoi(facetsStr[1])*scaleFactor, std::stoi(facetsStr[2])*scaleFactor, std::stoi(facetsStr[3])*scaleFactor);
-			facets.push_back(fs);
-		}
-	}
-
-	vertices.shrink_to_fit();
-	facets.shrink_to_fit();
-
-	file.close();
-
-	return std::make_pair(vertices, facets);
-}
-
-// Week 4 - Task 3: Read mtl
-std::vector<Colour> readMTLFile(std::string filename) {
-	std::ifstream file(filename);
-	std::string line;
-
-	// Instantiate vectors
-	std::vector<Colour> colours;
-	int index = 0;
-
-	// Add vertices and facets to vectors
-	while (std::getline(file, line)) {
-		// Output the text from the file
-		//std::cout << line << std::endl;
-		if (split(line, ' ')[0] == "newmtl") {
-			std::vector<std::string> colourName = split(line, ' ');
-			Colour colour = Colour(0, 0, 0);
-			colour.name = colourName[1];
-			colours.push_back(colour);
-		}
-		else if (line[0] == 'Kd') {
-			std::vector<std::string> rgbStr = split(line, 'Kd'); // continue here
-			int r = round(std::stof(rgbStr[1]) * 255);
-			int g = round(std::stof(rgbStr[2]) * 255);
-			int b = round(std::stof(rgbStr[3]) * 255);
-			index++;
-		}
-	}
-
-	colours.shrink_to_fit();
-
-	file.close();
-
-	return;
-}
 
 // Generate Random objects
 CanvasPoint createRandomPoint() {
@@ -263,8 +264,10 @@ int main(int argc, char *argv[]) {
 		drawTriangle(window, a, b, c, colour);*/
 
 		// Week 4 - Task 2
-		std::string filename = "cornell-box.obj";
-		readOBJFile(filename, 0.35);
+		std::string objFile = "cornell-box.obj";
+		readOBJFile(objFile, 0.35);
+		std::string mtlFile = "cornell-box.mtl";
+		readMTLFile(mtlFile);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
