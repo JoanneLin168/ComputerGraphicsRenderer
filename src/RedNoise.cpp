@@ -27,74 +27,6 @@ void clearWindow(DrawingWindow& window) {
 	}
 }
 
-// Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
-std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> readOBJFile(std::string filename, float scaleFactor) {
-	std::ifstream file(filename);
-	std::string line;
-
-	// Instantiate vectors
-	std::vector<glm::vec3> vertices;
-	std::vector<glm::vec3> facets;
-	glm::vec3 temp(0.0, 0.0, 0.0);
-	vertices.push_back(temp);
-
-	// Add vertices and facets to vectors
-	while (std::getline(file, line)) {
-		// Output the text from the file
-		//std::cout << line << std::endl;
-		if (line[0] == 'v') {
-			std::vector<std::string> verticesStr = split(line, ' ');
-			glm::vec3 vs(std::stof(verticesStr[1]) * scaleFactor, std::stof(verticesStr[2]) * scaleFactor, std::stof(verticesStr[3]) * scaleFactor);
-			vertices.push_back(vs);
-		}
-		else if (line[0] == 'f') {
-			std::vector<std::string> facetsStr = split(line, '/ '); // continue here
-			glm::vec3 fs(std::stoi(facetsStr[1]) * scaleFactor, std::stoi(facetsStr[2]) * scaleFactor, std::stoi(facetsStr[3]) * scaleFactor);
-			facets.push_back(fs);
-		}
-	}
-
-	vertices.shrink_to_fit();
-	facets.shrink_to_fit();
-
-	file.close();
-
-	return std::make_pair(vertices, facets);
-}
-
-// Week 4 - Task 3: Read mtl
-std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
-	std::ifstream file(filename);
-	std::string line;
-
-	// Instantiate vectors
-	std::unordered_map<std::string, Colour> coloursMap;
-
-	// Add colours to hashmap
-	std::string colourName = ""; // will be updated every time "newmtl" is read
-	while (std::getline(file, line)) {
-		// Output the text from the file
-		//std::cout << line << std::endl;
-		if (split(line, ' ')[0] == "newmtl") {
-			std::vector<std::string> colourNameStr = split(line, ' ');
-			colourName = colourNameStr[1];
-		}
-		else if (split(line, ' ')[0] == "Kd") {
-			std::vector<std::string> rgbStr = split(line, ' '); // continue here
-			int r = round(std::stof(rgbStr[1]) * 255);
-			int g = round(std::stof(rgbStr[2]) * 255);
-			int b = round(std::stof(rgbStr[3]) * 255);
-
-			Colour colour = Colour(r, g, b);
-			colour.name = colourName;
-			coloursMap[colourName] = colour;
-		}
-	}
-	file.close();
-
-	return coloursMap;
-}
-
 // Week 3 - Task 4
 // Interpolate - for rasterising
 std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint to, float numberOfValues) {
@@ -203,21 +135,112 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
 }
 
+// Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
+std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> readOBJFile(std::string filename, float scaleFactor) {
+	std::ifstream file(filename);
+	std::string line;
+
+	// Instantiate vectors
+	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> facets;
+	glm::vec3 temp(0.0, 0.0, 0.0);
+	vertices.push_back(temp);
+
+	// Add vertices and facets to vectors
+	while (std::getline(file, line)) {
+		// Output the text from the file
+		if (line[0] == 'v') {
+			std::vector<std::string> verticesStr = split(line, ' ');
+			glm::vec3 vs(std::stof(verticesStr[1]) * scaleFactor, std::stof(verticesStr[2]) * scaleFactor, std::stof(verticesStr[3]) * scaleFactor);
+			vertices.push_back(vs);
+		}
+		else if (line[0] == 'f') {
+			std::vector<std::string> facetsStr = split(line, '/ ');
+			glm::vec3 fs(std::stoi(facetsStr[1]), std::stoi(facetsStr[2]), std::stoi(facetsStr[3]));
+			facets.push_back(fs);
+		}
+	}
+
+	vertices.shrink_to_fit();
+	facets.shrink_to_fit();
+
+	file.close();
+
+	return std::make_pair(vertices, facets);
+}
+
+// Week 4 - Task 3: Read mtl
+std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
+	std::ifstream file(filename);
+	std::string line;
+
+	// Instantiate vectors
+	std::unordered_map<std::string, Colour> coloursMap;
+
+	// Add colours to hashmap
+	std::string colourName = ""; // will be updated every time "newmtl" is read
+	while (std::getline(file, line)) {
+		// Output the text from the file
+		if (split(line, ' ')[0] == "newmtl") {
+			std::vector<std::string> colourNameStr = split(line, ' ');
+			colourName = colourNameStr[1];
+		}
+		else if (split(line, ' ')[0] == "Kd") {
+			std::vector<std::string> rgbStr = split(line, ' ');
+			int r = round(std::stof(rgbStr[1]) * 255);
+			int g = round(std::stof(rgbStr[2]) * 255);
+			int b = round(std::stof(rgbStr[3]) * 255);
+
+			Colour colour = Colour(r, g, b);
+			colour.name = colourName;
+			coloursMap[colourName] = colour;
+		}
+	}
+	file.close();
+
+	return coloursMap;
+}
+
+
 // Week 4 - Task 5
 CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
-	float x_3d = vertexPosition.r;
-	float y_3d = vertexPosition.g;
-	float z_3d = vertexPosition.b;
+	float x_3d = vertexPosition.x;
+	float y_3d = vertexPosition.y;
+	float z_3d = vertexPosition.z;
 
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
-	float x_2d = focalLength * (x_3d / z_3d) + (WIDTH / 2);
-	float y_2d = focalLength * (y_3d / z_3d) + (HEIGHT / 2);
+	float x_2d = (focalLength * (x_3d / z_3d)) + (WIDTH / 2);
+	float y_2d = (focalLength * (y_3d / z_3d)) + (HEIGHT / 2);
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d);
 
 	return intersectionPoint;
 }
 
+// Week 4 - Task 6
+void renderPointCloud(DrawingWindow& window, std::vector<glm::vec3> vertices, glm::vec3 cameraPosition, float focalLength) {
+	std::vector<CanvasPoint> canvasPoints;
+	for (int i = 1; i < vertices.size(); i++) {
+		glm::vec3 vertex = vertices[i];
+		CanvasPoint intersectionPoint = getCanvasIntersectionPoint(cameraPosition, vertex, focalLength);
+		canvasPoints.push_back(intersectionPoint);
+	}
+	canvasPoints.shrink_to_fit();
+
+	// Draw points
+	for (float i = 0; i < canvasPoints.size(); i++) {
+		float x = canvasPoints[i].x;
+		float y = canvasPoints[i].y;
+
+		int red = 255;
+		int green = 255;
+		int blue = 255;
+		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
+		window.setPixelColour(round(x), ceil(y), colour);
+	}
+}
+
+// ==================================== RANDOM ======================================= //
 // Generate Random objects
 CanvasPoint createRandomPoint() {
 	float x = rand() % WIDTH;
@@ -253,6 +276,8 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 	}
 }
 
+bool printed = false;
+
 int main(int argc, char *argv[]) {
 	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
@@ -263,18 +288,20 @@ int main(int argc, char *argv[]) {
 
 		// Week 4 - Task 2
 		std::string objFile = "cornell-box.obj";
-		readOBJFile(objFile, 0.35);
+		std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> objResult = readOBJFile(objFile, 0.35);
+		std::vector<glm::vec3> vertices = objResult.first;
+		std::vector<glm::vec3> faces = objResult.second;
 
 		// Week 4 - Task 3
 		std::string mtlFile = "cornell-box.mtl";
 		readMTLFile(mtlFile);
 
 		// Week 4 - Task 5
-		glm::vec3 cameraPosition = glm::vec3(0, 0, 4);
-		glm::vec3 vertexPosition = glm::vec3(2, 3, 4); // test
+		glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
 		float focalLength = 2.0;
-		CanvasPoint result = getCanvasIntersectionPoint(cameraPosition, vertexPosition, focalLength);
-		std::cout << result.r << result.g << result.b << std::endl;
+
+		// Week 4 - Task 6
+		renderPointCloud(window, vertices, cameraPosition, focalLength); // todo - figure out why points are shown wrong
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
