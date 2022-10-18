@@ -203,7 +203,20 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
 }
 
+// Week 4 - Task 5
+CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
+	float x_3d = vertexPosition.r;
+	float y_3d = vertexPosition.g;
+	float z_3d = vertexPosition.b;
 
+	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
+	float x_2d = focalLength * (x_3d / z_3d) + (WIDTH / 2);
+	float y_2d = focalLength * (y_3d / z_3d) + (HEIGHT / 2);
+
+	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d);
+
+	return intersectionPoint;
+}
 
 // Generate Random objects
 CanvasPoint createRandomPoint() {
@@ -248,26 +261,20 @@ int main(int argc, char *argv[]) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
 
-		// Week 3 - Task 2
-		/*CanvasPoint from = CanvasPoint(0, 0);
-		CanvasPoint to = CanvasPoint(WIDTH, HEIGHT);
-		Colour colour = Colour(255, 0, 0);
-		drawLine(window, from, to, colour);*/
-
-		// Week 3 - Task 3 pt1 (pt2 is in handleEvent())
-		/*int w = WIDTH - 1;
-		int h = HEIGHT - 1;
-		CanvasPoint a = CanvasPoint(0, 0);
-		CanvasPoint b = CanvasPoint(w, h/2);
-		CanvasPoint c = CanvasPoint(w/2, h);
-		Colour colour = Colour(255, 0, 0);
-		drawTriangle(window, a, b, c, colour);*/
-
 		// Week 4 - Task 2
 		std::string objFile = "cornell-box.obj";
 		readOBJFile(objFile, 0.35);
+
+		// Week 4 - Task 3
 		std::string mtlFile = "cornell-box.mtl";
 		readMTLFile(mtlFile);
+
+		// Week 4 - Task 5
+		glm::vec3 cameraPosition = glm::vec3(0, 0, 4);
+		glm::vec3 vertexPosition = glm::vec3(2, 3, 4); // test
+		float focalLength = 2.0;
+		CanvasPoint result = getCanvasIntersectionPoint(cameraPosition, vertexPosition, focalLength);
+		std::cout << result.r << result.g << result.b << std::endl;
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
