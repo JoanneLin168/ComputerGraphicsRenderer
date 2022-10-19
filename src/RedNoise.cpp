@@ -16,6 +16,7 @@
 
 #define WIDTH 320
 #define HEIGHT 240
+#define SCALE 150 // used for scaling onto img canvas
 
 // Clear screen
 void clearWindow(DrawingWindow& window) {
@@ -209,8 +210,8 @@ CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 verte
 	float z_3d = vertexPosition.z;
 
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
-	float x_2d = (focalLength * (x_3d / z_3d)) + (WIDTH / 2);
-	float y_2d = (focalLength * (y_3d / z_3d)) + (HEIGHT / 2);
+	float x_2d = (focalLength * SCALE * (x_3d / (z_3d - cameraPosition.z))) + (WIDTH / 2);
+	float y_2d = (focalLength * SCALE * (y_3d / (z_3d - cameraPosition.z))) + (HEIGHT / 2);
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d);
 
@@ -238,6 +239,35 @@ void renderPointCloud(DrawingWindow& window, std::vector<glm::vec3> vertices, gl
 		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
 		window.setPixelColour(round(x), ceil(y), colour);
 	}
+}
+
+// Week 4 - Task 7: Create vector of ModelTriangles
+std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertices, std::vector<glm::vec3> facets, std::unordered_map<std::string, Colour> coloursMap) {
+	std::vector<ModelTriangle> results;
+	for (glm::vec3 facet : facets) {
+		int xIndex = facet.x;
+		int yIndex = facet.y;
+		int zIndex = facet.z;
+		Colour white = Colour(255, 255, 255); // tmp
+		ModelTriangle triangle_3d = ModelTriangle(vertices[xIndex], vertices[yIndex], vertices[zIndex], white);
+		results.push_back(triangle_3d);
+	}
+	results.shrink_to_fit();
+	return results;
+}
+
+// Week 4 - Task 7: Convert ModelTriangles to CanvasTriangles
+std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<ModelTriangle> modelTriangles, glm::vec3 cameraPosition, float focalLength) {
+	std::vector<CanvasTriangle> canvasTriangles;
+	for (ModelTriangle mTriangle : modelTriangles) {
+		CanvasPoint a = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[0], focalLength);
+		CanvasPoint b = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[1], focalLength);
+		CanvasPoint c = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[2], focalLength);
+		CanvasTriangle cTriangle = CanvasTriangle(a, b, c);
+		canvasTriangles.push_back(cTriangle);
+	}
+	canvasTriangles.shrink_to_fit();
+	return canvasTriangles;
 }
 
 // ==================================== RANDOM ======================================= //
@@ -290,18 +320,25 @@ int main(int argc, char *argv[]) {
 		std::string objFile = "cornell-box.obj";
 		std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> objResult = readOBJFile(objFile, 0.35);
 		std::vector<glm::vec3> vertices = objResult.first;
-		std::vector<glm::vec3> faces = objResult.second;
+		std::vector<glm::vec3> facets = objResult.second;
 
 		// Week 4 - Task 3
 		std::string mtlFile = "cornell-box.mtl";
-		readMTLFile(mtlFile);
+		std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
 
 		// Week 4 - Task 5
 		glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
 		float focalLength = 2.0;
 
 		// Week 4 - Task 6
-		renderPointCloud(window, vertices, cameraPosition, focalLength); // todo - figure out why points are shown wrong
+		renderPointCloud(window, vertices, cameraPosition, focalLength);
+
+		// Week 4 - Task 7
+		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, coloursMap);
+		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
+		for (CanvasTriangle cTriangle : canvasTriangles) {
+			drawTriangle(window, cTriangle.v0(), cTriangle.v1(), cTriangle.v2(), Colour(255, 255, 255));
+		}
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
