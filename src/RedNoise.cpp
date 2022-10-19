@@ -39,8 +39,8 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	float yIncrement = yDiff / numberOfValues;
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
-		float y = from.y + long(yIncrement * i);
+		float x = from.x + float(xIncrement * i);
+		float y = from.y + float(yIncrement * i);
 		result.push_back(CanvasPoint(x, y));
 	}
 	result.shrink_to_fit();
@@ -58,13 +58,13 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	float yIncrement = yDiff / numberOfValues;
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
-		float y = from.y + long(yIncrement * i);
-		int red = colour.red;
-		int green = colour.green;
-		int blue = colour.blue;
+		float x = float(from.x + float(xIncrement * i));
+		float y = float(from.y + float(yIncrement * i));
+		float red = colour.red;
+		float green = colour.green;
+		float blue = colour.blue;
 		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
-		window.setPixelColour(round(x), ceil(y), colour);
+		window.setPixelColour(floor(x), ceil(y), colour);
 	}
 }
 
@@ -94,8 +94,6 @@ std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
 void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour colour) {
 	// start off by cutting triangle horizontally so there are two flat bottom triangles
 	// fill each triangle from the line
-
-	Colour white = Colour(255, 255, 255);
 
 	// Split triangle into two flat-bottom triangles
 	std::vector<CanvasPoint> sortedPoints = sortPointsOnTriangleByHeight(triangle);
@@ -133,24 +131,31 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 		drawLine(window, pointsBToC[i], pointsBToD[i], colour);
 	}
 	drawLine(window, barrierStart, barrierEnd, colour);
-	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
+	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour);
 }
 
 // Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
-std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> readOBJFile(std::string filename, float scaleFactor) {
+std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> readOBJFile(std::string filename, float scaleFactor) {
 	std::ifstream file(filename);
 	std::string line;
 
 	// Instantiate vectors
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> facets;
+	std::vector<std::string> colours;
+
+	// Add temp values
 	glm::vec3 temp(0.0, 0.0, 0.0);
 	vertices.push_back(temp);
 
 	// Add vertices and facets to vectors
+	std::string colourName = "Temp"; // tmp - to be updated whenever "usemtl" is shown
 	while (std::getline(file, line)) {
 		// Output the text from the file
-		if (line[0] == 'v') {
+		if (split(line, ' ')[0] == "usemtl") {
+			colourName = split(line, ' ')[1];
+		}
+		else if (line[0] == 'v') {
 			std::vector<std::string> verticesStr = split(line, ' ');
 			glm::vec3 vs(std::stof(verticesStr[1]) * scaleFactor, std::stof(verticesStr[2]) * scaleFactor, std::stof(verticesStr[3]) * scaleFactor);
 			vertices.push_back(vs);
@@ -159,15 +164,17 @@ std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> readOBJFile(std::strin
 			std::vector<std::string> facetsStr = split(line, '/ ');
 			glm::vec3 fs(std::stoi(facetsStr[1]), std::stoi(facetsStr[2]), std::stoi(facetsStr[3]));
 			facets.push_back(fs);
+			colours.push_back(colourName); // push colour for every facet of the same colour, so facet[i] has colours[i]
 		}
 	}
 
 	vertices.shrink_to_fit();
 	facets.shrink_to_fit();
+	colours.shrink_to_fit();
 
 	file.close();
 
-	return std::make_pair(vertices, facets);
+	return std::make_tuple(vertices, facets, colours);
 }
 
 // Week 4 - Task 3: Read mtl
@@ -210,7 +217,7 @@ CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 verte
 	float z_3d = vertexPosition.z;
 
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
-	float x_2d = (focalLength * SCALE * (x_3d / (z_3d - cameraPosition.z))) + (WIDTH / 2);
+	float x_2d = (focalLength * -SCALE * (x_3d / (z_3d - cameraPosition.z))) + (WIDTH / 2);
 	float y_2d = (focalLength * SCALE * (y_3d / (z_3d - cameraPosition.z))) + (HEIGHT / 2);
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d);
@@ -242,14 +249,18 @@ void renderPointCloud(DrawingWindow& window, std::vector<glm::vec3> vertices, gl
 }
 
 // Week 4 - Task 7: Create vector of ModelTriangles
-std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertices, std::vector<glm::vec3> facets, std::unordered_map<std::string, Colour> coloursMap) {
+std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertices,
+												  std::vector<glm::vec3> facets,
+												  std::vector<std::string> colours,
+												  std::unordered_map<std::string, Colour> coloursMap) {
 	std::vector<ModelTriangle> results;
-	for (glm::vec3 facet : facets) {
+	for (int i = 0; i < facets.size(); i++) {
+		glm::vec3 facet = facets[i];
 		int xIndex = facet.x;
 		int yIndex = facet.y;
 		int zIndex = facet.z;
-		Colour white = Colour(255, 255, 255); // tmp
-		ModelTriangle triangle_3d = ModelTriangle(vertices[xIndex], vertices[yIndex], vertices[zIndex], white);
+		Colour colour = coloursMap[colours[i]];
+		ModelTriangle triangle_3d = ModelTriangle(vertices[xIndex], vertices[yIndex], vertices[zIndex], colour);
 		results.push_back(triangle_3d);
 	}
 	results.shrink_to_fit();
@@ -318,9 +329,10 @@ int main(int argc, char *argv[]) {
 
 		// Week 4 - Task 2
 		std::string objFile = "cornell-box.obj";
-		std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> objResult = readOBJFile(objFile, 0.35);
-		std::vector<glm::vec3> vertices = objResult.first;
-		std::vector<glm::vec3> facets = objResult.second;
+		std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
+		std::vector<glm::vec3> vertices = std::get<0>(objResult);
+		std::vector<glm::vec3> facets = std::get<1>(objResult);
+		std::vector<std::string> colours = std::get<2>(objResult);
 
 		// Week 4 - Task 3
 		std::string mtlFile = "cornell-box.mtl";
@@ -331,13 +343,22 @@ int main(int argc, char *argv[]) {
 		float focalLength = 2.0;
 
 		// Week 4 - Task 6
-		renderPointCloud(window, vertices, cameraPosition, focalLength);
+		//renderPointCloud(window, vertices, cameraPosition, focalLength);
 
 		// Week 4 - Task 7
-		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, coloursMap);
+		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colours, coloursMap);
 		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
-		for (CanvasTriangle cTriangle : canvasTriangles) {
-			drawTriangle(window, cTriangle.v0(), cTriangle.v1(), cTriangle.v2(), Colour(255, 255, 255));
+		for (int i = 0; i < canvasTriangles.size(); i++) {
+			CanvasTriangle cTriangle = canvasTriangles[i];
+			Colour colour = coloursMap[colours[i]];
+			drawTriangle(window, cTriangle.v0(), cTriangle.v1(), cTriangle.v2(), colour);
+		}
+
+		// Week 4 - Task 8
+		for (int i = 0; i < canvasTriangles.size(); i++) {
+			CanvasTriangle cTriangle = canvasTriangles[i];
+			Colour colour = coloursMap[colours[i]];
+			drawFilledTriangle(window, cTriangle, colour);
 		}
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
