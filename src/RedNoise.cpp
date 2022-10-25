@@ -34,104 +34,21 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	std::vector<CanvasPoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
+	float zDiff = to.depth - from.depth;
 
 	float xIncrement = xDiff / numberOfValues;
 	float yIncrement = yDiff / numberOfValues;
+	float zIncrement = zDiff / numberOfValues;
 
 	for (float i = 0; i < numberOfValues; i++) {
 		float x = from.x + float(xIncrement * i);
 		float y = from.y + float(yIncrement * i);
-		result.push_back(CanvasPoint(x, y));
+		float z = from.depth + float(zIncrement * i);
+		result.push_back(CanvasPoint(x, y, z));
 	}
 	result.shrink_to_fit();
 
 	return result;
-}
-
-// Week 3 - Task 2
-void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour) {
-	float xDiff = to.x - from.x;
-	float yDiff = to.y - from.y;
-	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
-
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
-
-	for (float i = 0; i < numberOfValues; i++) {
-		float x = float(from.x + float(xIncrement * i));
-		float y = float(from.y + float(yIncrement * i));
-		float red = colour.red;
-		float green = colour.green;
-		float blue = colour.blue;
-		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
-		window.setPixelColour(floor(x), ceil(y), colour);
-	}
-}
-
-// Week 3 - Task 3
-void drawTriangle(DrawingWindow& window, CanvasPoint a, CanvasPoint b, CanvasPoint c, Colour colour) {
-	drawLine(window, a, b, colour); // Draw line a to b
-	drawLine(window, a, c, colour); // Draw line a to c
-	drawLine(window, b, c, colour); // Draw line b to c
-}
-
-std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
-	std::vector<CanvasPoint> sortedTrianglePoints;
-
-	sortedTrianglePoints.push_back(triangle.v0());
-	sortedTrianglePoints.push_back(triangle.v1());
-	sortedTrianglePoints.push_back(triangle.v2());
-
-	if (sortedTrianglePoints[0].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[2]);
-	if (sortedTrianglePoints[0].y > sortedTrianglePoints[1].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[1]);
-	if (sortedTrianglePoints[1].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[1], sortedTrianglePoints[2]);
-
-	sortedTrianglePoints.shrink_to_fit();
-	return sortedTrianglePoints;
-}
-
-// Week 3 - Task 4
-void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour colour) {
-	// start off by cutting triangle horizontally so there are two flat bottom triangles
-	// fill each triangle from the line
-
-	// Split triangle into two flat-bottom triangles
-	std::vector<CanvasPoint> sortedPoints = sortPointsOnTriangleByHeight(triangle);
-	CanvasPoint top = sortedPoints[0];
-	CanvasPoint mid = sortedPoints[1];
-	CanvasPoint bot = sortedPoints[2];
-
-	// Draw barrier; barrier = line that splits 2 triangles
-	float midLength = mid.y - top.y;
-	float ratio = (bot.x - top.x) / (bot.y - top.y); // if you cut big triangle, little triangle is SIMILAR to big triangle, therefore, need to use ratio
-	float barrierEndX = top.x + (midLength * ratio);
-	CanvasPoint barrierStart = CanvasPoint(mid.x, mid.y);
-	CanvasPoint barrierEnd = CanvasPoint(barrierEndX, mid.y);
-
-	//   a
-	//  d    c <- barrier
-	// b
-
-	// Interpolate between the vertices
-	// Top triangle
-	float numberOfValuesA = mid.y - top.y;
-	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
-	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
-
-	// Bottom triangle
-	float numberOfValuesB = bot.y - mid.y;
-	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
-	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
-
-	// Rasterise
-	for (int i = 0; i < pointsAToC.size(); i++) {
-		drawLine(window, pointsAToC[i], pointsAToD[i], colour);
-	}
-	for (int i = 0; i < pointsBToC.size(); i++) {
-		drawLine(window, pointsBToC[i], pointsBToD[i], colour);
-	}
-	drawLine(window, barrierStart, barrierEnd, colour);
-	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour);
 }
 
 // Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
@@ -219,8 +136,9 @@ CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 verte
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
 	float x_2d = (focalLength * -SCALE * (x_3d / (z_3d - cameraPosition.z))) + (WIDTH / 2);
 	float y_2d = (focalLength * SCALE * (y_3d / (z_3d - cameraPosition.z))) + (HEIGHT / 2);
+	float z_2d = -(z_3d - (cameraPosition.z - focalLength)); // need to shift the z backwards so that the z values start from the plane
 
-	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d);
+	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
 	return intersectionPoint;
 }
@@ -250,16 +168,16 @@ void renderPointCloud(DrawingWindow& window, std::vector<glm::vec3> vertices, gl
 
 // Week 4 - Task 7: Create vector of ModelTriangles
 std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertices,
-												  std::vector<glm::vec3> facets,
-												  std::vector<std::string> colours,
-												  std::unordered_map<std::string, Colour> coloursMap) {
+	std::vector<glm::vec3> facets,
+	std::vector<std::string> colourNames,
+	std::unordered_map<std::string, Colour> coloursMap) {
 	std::vector<ModelTriangle> results;
 	for (int i = 0; i < facets.size(); i++) {
 		glm::vec3 facet = facets[i];
 		int xIndex = facet.x;
 		int yIndex = facet.y;
 		int zIndex = facet.z;
-		Colour colour = coloursMap[colours[i]];
+		Colour colour = coloursMap[colourNames[i]];
 		ModelTriangle triangle_3d = ModelTriangle(vertices[xIndex], vertices[yIndex], vertices[zIndex], colour);
 		results.push_back(triangle_3d);
 	}
@@ -279,6 +197,123 @@ std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<Mod
 	}
 	canvasTriangles.shrink_to_fit();
 	return canvasTriangles;
+}
+
+// ==================================== DRAW ======================================= //
+
+// Week 3 - Task 2
+void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour, std::vector<std::vector<float>>& depthArray) {
+	float xDiff = to.x - from.x;
+	float yDiff = to.y - from.y;
+	float zDiff = to.depth - from.depth;
+	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
+
+	float xIncrement = xDiff / numberOfValues;
+	float yIncrement = yDiff / numberOfValues;
+	float zIncrement = zDiff / numberOfValues;
+
+	for (float i = 0; i < numberOfValues; i++) {
+		float x = float(from.x + float(xIncrement * i));
+		float y = float(from.y + float(yIncrement * i));
+		float z = float(from.depth + float(zIncrement * i));
+		float red = colour.red;
+		float green = colour.green;
+		float blue = colour.blue;
+		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
+
+		// If the distance is closer to the screen (1/z bigger than value in depthArray[y][x]) then draw pixel
+		float depthInverse = 1 / z; // negative was changed in getCanvasIntersectionPoint()
+		if (depthInverse > depthArray[ceil(y)][floor(x)]) {
+			depthArray[ceil(y)][floor(x)] = depthInverse;
+			window.setPixelColour(floor(x), ceil(y), colour);
+		}
+		else if (depthArray[ceil(y)][floor(x)] == 0) {
+			depthArray[ceil(y)][floor(x)] = depthInverse;
+			window.setPixelColour(floor(x), ceil(y), colour);
+		}
+	}
+}
+
+// Week 3 - Task 3
+void drawTriangle(DrawingWindow& window, CanvasPoint a, CanvasPoint b, CanvasPoint c, Colour colour, std::vector<std::vector<float>>& depthArray) {
+	drawLine(window, a, b, colour, depthArray); // Draw line a to b
+	drawLine(window, a, c, colour, depthArray); // Draw line a to c
+	drawLine(window, b, c, colour, depthArray); // Draw line b to c
+}
+
+std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
+	std::vector<CanvasPoint> sortedTrianglePoints;
+
+	sortedTrianglePoints.push_back(triangle.v0());
+	sortedTrianglePoints.push_back(triangle.v1());
+	sortedTrianglePoints.push_back(triangle.v2());
+
+	if (sortedTrianglePoints[0].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[2]);
+	if (sortedTrianglePoints[0].y > sortedTrianglePoints[1].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[1]);
+	if (sortedTrianglePoints[1].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[1], sortedTrianglePoints[2]);
+
+	sortedTrianglePoints.shrink_to_fit();
+	return sortedTrianglePoints;
+}
+
+// Week 4 - Task 9
+void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour colour, std::vector<std::vector<float>>& depthArray) {
+	// start off by cutting triangle horizontally so there are two flat bottom triangles
+	// fill each triangle from the line
+
+	// Split triangle into two flat-bottom triangles
+	std::vector<CanvasPoint> sortedPoints = sortPointsOnTriangleByHeight(triangle);
+	CanvasPoint top = sortedPoints[0];
+	CanvasPoint mid = sortedPoints[1];
+	CanvasPoint bot = sortedPoints[2];
+
+	// Get barrier; barrier = line that splits 2 triangles
+	float midLength = mid.y - top.y;
+	float ratioX = (bot.x - top.x) / (bot.y - top.y); // if you cut big triangle, little triangle is SIMILAR to big triangle, therefore, need to use ratio
+	float ratioZ = (bot.depth - top.depth) / (bot.y - top.y);
+	float barrierEndX = top.x + (midLength * ratioX);
+	float barrierEndZ = top.depth + (midLength * ratioZ);
+	CanvasPoint barrierStart = CanvasPoint(mid.x, mid.y, mid.depth);
+	CanvasPoint barrierEnd = CanvasPoint(barrierEndX, mid.y, barrierEndZ);
+
+	//   a
+	//  d    c <- barrier
+	// b
+
+	// Interpolate between the vertices
+	// Top triangle
+	float numberOfValuesA = mid.y - top.y;
+	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
+	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
+
+	// Bottom triangle
+	float numberOfValuesB = bot.y - mid.y;
+	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
+	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
+
+	// Rasterise - refer to depthArray
+	for (int i = 0; i < pointsAToC.size(); i++) {
+		drawLine(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
+	}
+	for (int i = 0; i < pointsBToC.size(); i++) {
+		drawLine(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
+	}
+	drawLine(window, barrierStart, barrierEnd, colour, depthArray);
+	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour, depthArray);
+}
+
+
+// Week 4 - Task 9
+void draw3D(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+	// Create a depth array
+	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
+
+	for (int i = 0; i < triangles.size(); i++) {
+		CanvasTriangle triangle = triangles[i];
+		Colour colour = coloursMap[colourNames[i]];
+
+		drawFilledTriangle(window, triangle, colour, depthArray);
+	}
 }
 
 // ==================================== RANDOM ======================================= //
@@ -306,60 +341,41 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 		else if (event.key.keysym.sym == SDLK_RIGHT) std::cout << "RIGHT" << std::endl;
 		else if (event.key.keysym.sym == SDLK_UP) std::cout << "UP" << std::endl;
 		else if (event.key.keysym.sym == SDLK_DOWN) std::cout << "DOWN" << std::endl;
-
-		else if (event.key.keysym.sym == SDLK_u) // Week 3 - Task 3
-			drawTriangle(window, createRandomPoint(), createRandomPoint(), createRandomPoint(), createRandomColour());
-		else if (event.key.keysym.sym == SDLK_f) // Week 3 - Task 4
-			drawFilledTriangle(window, createRandomTriangle(), createRandomColour());
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
 		window.saveBMP("output.bmp");
 	}
 }
 
-bool printed = false;
-
 int main(int argc, char *argv[]) {
 	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
+
+	// Week 4 - Task 2
+	std::string objFile = "cornell-box.obj";
+	std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
+	std::vector<glm::vec3> vertices = std::get<0>(objResult);
+	std::vector<glm::vec3> facets = std::get<1>(objResult);
+	std::vector<std::string> colourNames = std::get<2>(objResult);
+
+	// Week 4 - Task 3
+	std::string mtlFile = "cornell-box.mtl";
+	std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
 
-		// Week 4 - Task 2
-		std::string objFile = "cornell-box.obj";
-		std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
-		std::vector<glm::vec3> vertices = std::get<0>(objResult);
-		std::vector<glm::vec3> facets = std::get<1>(objResult);
-		std::vector<std::string> colours = std::get<2>(objResult);
-
-		// Week 4 - Task 3
-		std::string mtlFile = "cornell-box.mtl";
-		std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
-
 		// Week 4 - Task 5
 		glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
 		float focalLength = 2.0;
 
-		// Week 4 - Task 6
-		//renderPointCloud(window, vertices, cameraPosition, focalLength);
-
 		// Week 4 - Task 7
-		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colours, coloursMap);
+		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
 		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
-		for (int i = 0; i < canvasTriangles.size(); i++) {
-			CanvasTriangle cTriangle = canvasTriangles[i];
-			Colour colour = coloursMap[colours[i]];
-			drawTriangle(window, cTriangle.v0(), cTriangle.v1(), cTriangle.v2(), colour);
-		}
 
-		// Week 4 - Task 8
-		for (int i = 0; i < canvasTriangles.size(); i++) {
-			CanvasTriangle cTriangle = canvasTriangles[i];
-			Colour colour = coloursMap[colours[i]];
-			drawFilledTriangle(window, cTriangle, colour);
-		}
+		// Week 4 - Task 9
+		draw3D(window, canvasTriangles, coloursMap, colourNames);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
