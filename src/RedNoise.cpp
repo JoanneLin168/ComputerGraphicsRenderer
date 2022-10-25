@@ -134,36 +134,13 @@ CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 verte
 	float z_3d = vertexPosition.z;
 
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
-	float x_2d = (focalLength * -SCALE * (x_3d / (z_3d - cameraPosition.z))) + (WIDTH / 2);
-	float y_2d = (focalLength * SCALE * (y_3d / (z_3d - cameraPosition.z))) + (HEIGHT / 2);
+	float x_2d = (focalLength * -SCALE * (x_3d / (z_3d - cameraPosition.z))) + (WIDTH / 2) + cameraPosition.x;
+	float y_2d = (focalLength * SCALE * (y_3d / (z_3d - cameraPosition.z))) + (HEIGHT / 2) + cameraPosition.y;
 	float z_2d = -(z_3d - (cameraPosition.z - focalLength)); // need to shift the z backwards so that the z values start from the plane
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
 	return intersectionPoint;
-}
-
-// Week 4 - Task 6
-void renderPointCloud(DrawingWindow& window, std::vector<glm::vec3> vertices, glm::vec3 cameraPosition, float focalLength) {
-	std::vector<CanvasPoint> canvasPoints;
-	for (int i = 1; i < vertices.size(); i++) {
-		glm::vec3 vertex = vertices[i];
-		CanvasPoint intersectionPoint = getCanvasIntersectionPoint(cameraPosition, vertex, focalLength);
-		canvasPoints.push_back(intersectionPoint);
-	}
-	canvasPoints.shrink_to_fit();
-
-	// Draw points
-	for (float i = 0; i < canvasPoints.size(); i++) {
-		float x = canvasPoints[i].x;
-		float y = canvasPoints[i].y;
-
-		int red = 255;
-		int green = 255;
-		int blue = 255;
-		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
-		window.setPixelColour(round(x), ceil(y), colour);
-	}
 }
 
 // Week 4 - Task 7: Create vector of ModelTriangles
@@ -200,9 +177,7 @@ std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<Mod
 }
 
 // ==================================== DRAW ======================================= //
-
-// Week 3 - Task 2
-void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour, std::vector<std::vector<float>>& depthArray) {
+void draw(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour, std::vector<std::vector<float>>& depthArray) {
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
@@ -223,22 +198,24 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 
 		// If the distance is closer to the screen (1/z bigger than value in depthArray[y][x]) then draw pixel
 		float depthInverse = 1 / z; // negative was changed in getCanvasIntersectionPoint()
-		if (depthInverse > depthArray[ceil(y)][floor(x)]) {
-			depthArray[ceil(y)][floor(x)] = depthInverse;
-			window.setPixelColour(floor(x), ceil(y), colour);
-		}
-		else if (depthArray[ceil(y)][floor(x)] == 0) {
-			depthArray[ceil(y)][floor(x)] = depthInverse;
-			window.setPixelColour(floor(x), ceil(y), colour);
+		if (ceil(y) >=0 && ceil(y) < HEIGHT && floor(x) >= 0 && floor(x) < WIDTH) {
+			if (depthInverse > depthArray[ceil(y)][floor(x)]) {
+				depthArray[ceil(y)][floor(x)] = depthInverse;
+				window.setPixelColour(floor(x), ceil(y), colour);
+			}
+			else if (depthArray[ceil(y)][floor(x)] == 0) {
+				depthArray[ceil(y)][floor(x)] = depthInverse;
+				window.setPixelColour(floor(x), ceil(y), colour);
+			}
 		}
 	}
 }
 
 // Week 3 - Task 3
 void drawTriangle(DrawingWindow& window, CanvasPoint a, CanvasPoint b, CanvasPoint c, Colour colour, std::vector<std::vector<float>>& depthArray) {
-	drawLine(window, a, b, colour, depthArray); // Draw line a to b
-	drawLine(window, a, c, colour, depthArray); // Draw line a to c
-	drawLine(window, b, c, colour, depthArray); // Draw line b to c
+	draw(window, a, b, colour, depthArray); // Draw line a to b
+	draw(window, a, c, colour, depthArray); // Draw line a to c
+	draw(window, b, c, colour, depthArray); // Draw line b to c
 }
 
 std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
@@ -293,12 +270,12 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 	// Rasterise - refer to depthArray
 	for (int i = 0; i < pointsAToC.size(); i++) {
-		drawLine(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
+		draw(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
 	}
 	for (int i = 0; i < pointsBToC.size(); i++) {
-		drawLine(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
+		draw(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
 	}
-	drawLine(window, barrierStart, barrierEnd, colour, depthArray);
+	draw(window, barrierStart, barrierEnd, colour, depthArray);
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour, depthArray);
 }
 
@@ -335,12 +312,26 @@ Colour createRandomColour() {
 	return Colour(r, g, b);
 }
 
+// Global variables - to be changed by handleEvent
+glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
+float focalLength = 2.0;
+//glm::vec3 translationMatrix = glm::vec3(0.0, 0.0, 0.0);
+
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
-		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_RIGHT) std::cout << "RIGHT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_UP) std::cout << "UP" << std::endl;
-		else if (event.key.keysym.sym == SDLK_DOWN) std::cout << "DOWN" << std::endl;
+		clearWindow(window);
+		if (event.key.keysym.sym == SDLK_LEFT) {
+			cameraPosition.x += 1;
+		}
+		else if (event.key.keysym.sym == SDLK_RIGHT) {
+			cameraPosition.x -= 1;
+		}
+		else if (event.key.keysym.sym == SDLK_UP) {
+			cameraPosition.y += 1;
+		}
+		else if (event.key.keysym.sym == SDLK_DOWN) {
+			cameraPosition.y -= 1;
+		}
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
 		window.saveBMP("output.bmp");
@@ -365,10 +356,6 @@ int main(int argc, char *argv[]) {
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-
-		// Week 4 - Task 5
-		glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
-		float focalLength = 2.0;
 
 		// Week 4 - Task 7
 		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
