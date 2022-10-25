@@ -313,24 +313,68 @@ Colour createRandomColour() {
 }
 
 // Global variables - to be changed by handleEvent
-glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
-float focalLength = 2.0;
-//glm::vec3 translationMatrix = glm::vec3(0.0, 0.0, 0.0);
+glm::vec3 translationVector = glm::vec3(0.0, 0.0, 0.0);
+glm::vec3 rotationAngles = glm::vec3(0.0, 0.0, 0.0);
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
 		clearWindow(window);
-		if (event.key.keysym.sym == SDLK_LEFT) {
-			cameraPosition.x += 1;
+		// Translation
+		if (event.key.keysym.sym == SDLK_a) {
+			translationVector.x += 1;
 		}
-		else if (event.key.keysym.sym == SDLK_RIGHT) {
-			cameraPosition.x -= 1;
+		else if (event.key.keysym.sym == SDLK_d) {
+			translationVector.x -= 1;
 		}
-		else if (event.key.keysym.sym == SDLK_UP) {
-			cameraPosition.y += 1;
+		else if (event.key.keysym.sym == SDLK_w) {
+			translationVector.y += 1;
 		}
-		else if (event.key.keysym.sym == SDLK_DOWN) {
-			cameraPosition.y -= 1;
+		else if (event.key.keysym.sym == SDLK_s) {
+			translationVector.y -= 1;
+		}
+		else if (event.key.keysym.sym == SDLK_q) {
+			translationVector.z += 0.1;
+		}
+		else if (event.key.keysym.sym == SDLK_e) {
+			translationVector.z -= 0.1;
+		}
+
+		// Rotation
+		else if (event.key.keysym.sym == SDLK_j) {
+			rotationAngles.x += (10.0/360.0)*2*M_PI;
+			if (fmod(rotationAngles.x, 2*M_PI) == 0) {
+				rotationAngles.x = 0;
+			}
+		}
+		else if (event.key.keysym.sym == SDLK_l) {
+			rotationAngles.x -= (10.0/360.0)*2*M_PI;
+			if (fmod(rotationAngles.x, 2 * M_PI) == 0) {
+				rotationAngles.x = 0;
+			}
+		}
+		else if (event.key.keysym.sym == SDLK_i) {
+			rotationAngles.y += (10.0/360.0)*2*M_PI;
+			if (fmod(rotationAngles.y, 2 * M_PI) == 0) {
+				rotationAngles.y = 0;
+			}
+		}
+		else if (event.key.keysym.sym == SDLK_k) {
+			rotationAngles.y -= (10.0/360.0)*2*M_PI;
+			if (fmod(rotationAngles.y, 2 * M_PI) == 0) {
+				rotationAngles.y = 0;
+			}
+		}
+		else if (event.key.keysym.sym == SDLK_u) {
+			rotationAngles.z += (10.0/360.0)*2*M_PI;
+			if (fmod(rotationAngles.z, 2 * M_PI) == 0) {
+				rotationAngles.z = 0;
+			}
+		}
+		else if (event.key.keysym.sym == SDLK_o) {
+			rotationAngles.z -= (10.0/360.0)*2*M_PI;
+			if (fmod(rotationAngles.z, 2 * M_PI) == 0) {
+				rotationAngles.z = 0;
+			}
 		}
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
@@ -353,15 +397,39 @@ int main(int argc, char *argv[]) {
 	std::string mtlFile = "cornell-box.mtl";
 	std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
 
+	// Variables for camera
+	glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
+	glm::vec3 cameraOrientation = glm::vec3(1.0, 0.0, 0.0);
+	float focalLength = 2.0;
+
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
 
-		// Week 4 - Task 7
-		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
-		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
+		// Update camera variables
+		glm::vec3 cameraTranslated = cameraPosition + translationVector;
+		glm::mat3 rotationMatrixX = glm::mat3(
+			1, 0, 0,
+			0, cos(rotationAngles.x), -sin(rotationAngles.x),
+			0, sin(rotationAngles.x), cos(rotationAngles.x)
+		);
+		glm::mat3 rotationMatrixY = glm::mat3(
+			cos(rotationAngles.y), 0, -sin(rotationAngles.y),
+			0, 1, 0,
+			sin(rotationAngles.y), 0, cos(rotationAngles.y)
+		);
+		glm::mat3 rotationMatrixZ = glm::mat3(
+			cos(rotationAngles.z), -sin(rotationAngles.z), 0,
+			sin(rotationAngles.z), cos(rotationAngles.z), 0,
+			0, 0, 1
+		);
+		glm::vec3 cameraTransformed = rotationMatrixY * (rotationMatrixX * cameraTranslated);
 
-		// Week 4 - Task 9
+		// Get triangles
+		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
+		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraTransformed, focalLength);
+
+		// Draw the triangles
 		draw3D(window, canvasTriangles, coloursMap, colourNames);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
