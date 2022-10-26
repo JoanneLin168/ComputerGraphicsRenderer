@@ -289,13 +289,14 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 // Week 4 - Task 9
 void draw3D(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+	clearWindow(window);
+
 	// Create a depth array
 	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
 
 	for (int i = 0; i < triangles.size(); i++) {
 		CanvasTriangle triangle = triangles[i];
 		Colour colour = coloursMap[colourNames[i]];
-
 		drawFilledTriangle(window, triangle, colour, depthArray);
 	}
 }
@@ -319,7 +320,7 @@ Colour createRandomColour() {
 	return Colour(r, g, b);
 }
 
-// Transforming Camera
+// ==================================== TRANSFORM CAMERA ======================================= //
 void translateCamera(std::string axis, float dist, glm::vec3& cameraPosition) {
 	if (axis == "X") {
 		glm::vec3 translationVectorX = glm::vec3(dist, 0, 0);
@@ -367,7 +368,6 @@ void rotateCamera(std::string axis, float theta, glm::vec3& cameraPosition, glm:
 
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
 	if (event.type == SDL_KEYDOWN) {
-		clearWindow(window);
 		// Translation
 		if      (event.key.keysym.sym == SDLK_d) translateCamera("X", DIST, cameraPosition);
 		else if (event.key.keysym.sym == SDLK_a) translateCamera("X", -DIST, cameraPosition);
@@ -423,6 +423,9 @@ int main(int argc, char *argv[]) {
 
 		// Draw the triangles
 		draw3D(window, canvasTriangles, coloursMap, colourNames);
+
+		// Orbit
+		rotateCamera("Y", -ANGLE, cameraPosition, cameraOrientation);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
