@@ -14,9 +14,19 @@
 #include <fstream> // Week 4 - Task 2
 #include <unordered_map> // Week 4 - Task 3
 
-#define WIDTH 320
-#define HEIGHT 240
+#define WIDTH 1000
+#define HEIGHT 1000
 #define SCALE 150 // used for scaling onto img canvas
+
+
+// Global variables - to be changed by handleEvent
+glm::vec3 translationVector = glm::vec3(0.0, 0.0, 0.0);
+glm::vec3 rotationAngles = glm::vec3(0.0, 0.0, 0.0);
+glm::mat3 cameraOrientation = glm::mat3(
+	1, 0, 0,
+	0, 1, 0,
+	0, 0, 1
+);
 
 // Clear screen
 void clearWindow(DrawingWindow& window) {
@@ -133,10 +143,35 @@ CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 verte
 	float y_3d = vertexPosition.y;
 	float z_3d = vertexPosition.z;
 
+	// Rotation matrices
+	float x_angle = rotationAngles.x;
+	float y_angle = rotationAngles.y;
+	float z_angle = rotationAngles.z;
+	glm::mat3 rotationMatrixX = glm::mat3( // IN COLUMN ORDER
+		glm::vec3(1, 0, 0),
+		glm::vec3(0, cos(x_angle), sin(x_angle)),
+		glm::vec3(0, -sin(x_angle), cos(x_angle))
+	);
+	glm::mat3 rotationMatrixY = glm::mat3(
+		glm::vec3(cos(y_angle), 0, sin(y_angle)),
+		glm::vec3(0, 1, 0),
+		glm::vec3(-sin(y_angle), 0, cos(y_angle))
+	);
+	glm::mat3 rotationMatrixZ = glm::mat3(
+		glm::vec3(cos(y_angle), -sin(y_angle), 0),
+		glm::vec3(sin(y_angle), cos(y_angle), 0),
+		glm::vec3(0, 0, 1)
+	);
+
+	glm::vec3 tmpCameraPositio;
+
+	glm::vec3 distanceFromCamera = vertexPosition - cameraPosition;
+	distanceFromCamera = distanceFromCamera * cameraOrientation;
+
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
-	float x_2d = (focalLength * -SCALE * ((x_3d + cameraPosition.x) / (z_3d - cameraPosition.z))) + (WIDTH / 2);
-	float y_2d = (focalLength * SCALE * ((y_3d + cameraPosition.y) / (z_3d - cameraPosition.z))) + (HEIGHT / 2);
-	float z_2d = -(z_3d - (cameraPosition.z - focalLength)); // need to shift the z backwards so that the z values start from the plane
+	float x_2d = (focalLength * SCALE * (distanceFromCamera.x / -distanceFromCamera.z)) + (WIDTH / 2);
+	float y_2d = (focalLength * SCALE * (distanceFromCamera.y / distanceFromCamera.z)) + (HEIGHT / 2);
+	float z_2d = -(z_3d + distanceFromCamera.z); // need to shift the z backwards so that the z values start from the plane
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
@@ -312,11 +347,37 @@ Colour createRandomColour() {
 	return Colour(r, g, b);
 }
 
-// Global variables - to be changed by handleEvent
-glm::vec3 translationVector = glm::vec3(0.0, 0.0, 0.0);
-glm::vec3 rotationAngles = glm::vec3(0.0, 0.0, 0.0);
+void rotateCamera(std::string axis, float theta, glm::vec3& cameraPosition, glm::mat3& cameraOrientation) {
+	if (axis == "X") {
+		glm::mat3 rotationMatrixX = glm::mat3(
+			glm::vec3(1, 0, 0),
+			glm::vec3(0, cos(theta), sin(theta)),
+			glm::vec3(0, -sin(theta), cos(theta))
+		);
+		cameraOrientation = rotationMatrixX * cameraOrientation;
+		cameraPosition = rotationMatrixX * cameraPosition;
+	}
+	else if (axis == "Y") {
+		glm::mat3 rotationMatrixY = glm::mat3(
+			glm::vec3(cos(theta), 0, sin(theta)),
+			glm::vec3(0, 1, 0),
+			glm::vec3(-sin(theta), 0, cos(theta))
+		);
+		cameraOrientation = rotationMatrixY * cameraOrientation;
+		cameraPosition = rotationMatrixY * cameraPosition;
+	}
+	else if (axis == "Z") {
+		glm::mat3 rotationMatrixZ = glm::mat3(
+			glm::vec3(cos(theta), sin(theta), 0),
+			glm::vec3(-sin(theta), cos(theta), 0),
+			glm::vec3(0, 0, 1)
+		);
+		cameraOrientation = rotationMatrixZ * cameraOrientation;
+		cameraPosition = rotationMatrixZ * cameraPosition;
+	}
+}
 
-void handleEvent(SDL_Event event, DrawingWindow &window) {
+void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
 	if (event.type == SDL_KEYDOWN) {
 		clearWindow(window);
 		// Translation
@@ -327,10 +388,10 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 			translationVector.x -= 0.1;
 		}
 		else if (event.key.keysym.sym == SDLK_w) {
-			translationVector.y += 0.1;
+			translationVector.y -= 0.1;
 		}
 		else if (event.key.keysym.sym == SDLK_s) {
-			translationVector.y -= 0.1;
+			translationVector.y += 0.1;
 		}
 		else if (event.key.keysym.sym == SDLK_q) {
 			translationVector.z += 0.1;
@@ -341,40 +402,28 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 
 		// Rotation
 		else if (event.key.keysym.sym == SDLK_j) {
-			rotationAngles.x += (10.0/360.0)*2*M_PI;
-			if (fmod(rotationAngles.x, 2*M_PI) == 0) {
-				rotationAngles.x = 0;
-			}
+			rotationAngles.x += (1.0/360.0)*2*M_PI;
+			rotateCamera("X", rotationAngles.x, cameraPosition, cameraOrientation);
 		}
 		else if (event.key.keysym.sym == SDLK_l) {
-			rotationAngles.x -= (10.0/360.0)*2*M_PI;
-			if (fmod(rotationAngles.x, 2 * M_PI) == 0) {
-				rotationAngles.x = 0;
-			}
+			rotationAngles.x -= (1.0/360.0)*2*M_PI;
+			rotateCamera("X", rotationAngles.x, cameraPosition, cameraOrientation);
 		}
 		else if (event.key.keysym.sym == SDLK_i) {
-			rotationAngles.y += (10.0/360.0)*2*M_PI;
-			if (fmod(rotationAngles.y, 2 * M_PI) == 0) {
-				rotationAngles.y = 0;
-			}
+			rotationAngles.y += (1.0/360.0)*2*M_PI;
+			rotateCamera("Y", rotationAngles.y, cameraPosition, cameraOrientation);
 		}
 		else if (event.key.keysym.sym == SDLK_k) {
-			rotationAngles.y -= (10.0/360.0)*2*M_PI;
-			if (fmod(rotationAngles.y, 2 * M_PI) == 0) {
-				rotationAngles.y = 0;
-			}
+			rotationAngles.y -= (1.0/360.0)*2*M_PI;
+			rotateCamera("Y", rotationAngles.y, cameraPosition, cameraOrientation);
 		}
 		else if (event.key.keysym.sym == SDLK_u) {
-			rotationAngles.z += (10.0/360.0)*2*M_PI;
-			if (fmod(rotationAngles.z, 2 * M_PI) == 0) {
-				rotationAngles.z = 0;
-			}
+			rotationAngles.z += (1.0/360.0)*2*M_PI;
+			rotateCamera("Z", rotationAngles.z, cameraPosition, cameraOrientation);
 		}
 		else if (event.key.keysym.sym == SDLK_o) {
-			rotationAngles.z -= (10.0/360.0)*2*M_PI;
-			if (fmod(rotationAngles.z, 2 * M_PI) == 0) {
-				rotationAngles.z = 0;
-			}
+			rotationAngles.z -= (1.0/360.0)*2*M_PI;
+			rotateCamera("Z", rotationAngles.z, cameraPosition, cameraOrientation);
 		}
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
@@ -399,35 +448,19 @@ int main(int argc, char *argv[]) {
 
 	// Variables for camera
 	glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
-	glm::vec3 cameraOrientation = glm::vec3(1.0, 0.0, 0.0);
+	//glm::mat3 cameraOrientation = glm::vec3((1.0, 0.0, 0.0));
 	float focalLength = 2.0;
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
-		if (window.pollForInputEvents(event)) handleEvent(event, window);
+		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, cameraOrientation);
 
 		// Update camera variables
 		glm::vec3 cameraTranslated = cameraPosition + translationVector;
-		glm::mat3 rotationMatrixX = glm::mat3(
-			1, 0, 0,
-			0, cos(rotationAngles.x), -sin(rotationAngles.x),
-			0, sin(rotationAngles.x), cos(rotationAngles.x)
-		);
-		glm::mat3 rotationMatrixY = glm::mat3(
-			cos(rotationAngles.y), 0, -sin(rotationAngles.y),
-			0, 1, 0,
-			sin(rotationAngles.y), 0, cos(rotationAngles.y)
-		);
-		glm::mat3 rotationMatrixZ = glm::mat3(
-			cos(rotationAngles.z), -sin(rotationAngles.z), 0,
-			sin(rotationAngles.z), cos(rotationAngles.z), 0,
-			0, 0, 1
-		);
-		glm::vec3 cameraTransformed = rotationMatrixY * (rotationMatrixX * cameraTranslated);
 
 		// Get triangles
 		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
-		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraTransformed, focalLength);
+		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraTranslated, focalLength);
 
 		// Draw the triangles
 		draw3D(window, canvasTriangles, coloursMap, colourNames);
