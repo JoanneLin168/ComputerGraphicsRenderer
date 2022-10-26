@@ -321,19 +321,8 @@ Colour createRandomColour() {
 }
 
 // ==================================== TRANSFORM CAMERA ======================================= //
-void translateCamera(std::string axis, float dist, glm::vec3& cameraPosition) {
-	if (axis == "X") {
-		glm::vec3 translationVectorX = glm::vec3(dist, 0, 0);
-		cameraPosition = cameraPosition + translationVectorX;
-	}
-	else if (axis == "Y") {
-		glm::vec3 translationVectorY = glm::vec3(0, dist, 0);
-		cameraPosition = cameraPosition + translationVectorY;
-	}
-	else if (axis == "Z") {
-		glm::vec3 translationVectorZ = glm::vec3(0, 0, dist);
-		cameraPosition = cameraPosition + translationVectorZ;
-	}
+void translateCamera(glm::vec3& cameraPosition, glm::vec3 translationVector) {
+	cameraPosition = cameraPosition + translationVector;
 }
 
 void rotateCamera(std::string axis, float theta, glm::vec3& cameraPosition, glm::mat3& cameraOrientation) {
@@ -366,15 +355,15 @@ void rotateCamera(std::string axis, float theta, glm::vec3& cameraPosition, glm:
 	}
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation) {
+void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, bool& toOrbit) {
 	if (event.type == SDL_KEYDOWN) {
 		// Translation
-		if      (event.key.keysym.sym == SDLK_d) translateCamera("X", DIST, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_a) translateCamera("X", -DIST, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_w) translateCamera("Y", DIST, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_s) translateCamera("Y", -DIST, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_q) translateCamera("Z", DIST, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_e) translateCamera("Z", -DIST, cameraPosition);
+		if (event.key.keysym.sym == SDLK_d) translateCamera(cameraPosition, glm::vec3(DIST, 0, 0));
+		else if (event.key.keysym.sym == SDLK_a) translateCamera(cameraPosition, glm::vec3(-DIST, 0, 0));
+		else if (event.key.keysym.sym == SDLK_w) translateCamera(cameraPosition, glm::vec3(0, DIST, 0));
+		else if (event.key.keysym.sym == SDLK_s) translateCamera(cameraPosition, glm::vec3(0, -DIST, 0));
+		else if (event.key.keysym.sym == SDLK_q) translateCamera(cameraPosition, glm::vec3(0, 0, DIST));
+		else if (event.key.keysym.sym == SDLK_e) translateCamera(cameraPosition, glm::vec3(0, 0, -DIST));
 
 		// Rotation
 		else if (event.key.keysym.sym == SDLK_l) rotateCamera("X", ANGLE, cameraPosition, cameraOrientation);
@@ -383,6 +372,8 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
 		else if (event.key.keysym.sym == SDLK_k) rotateCamera("Y", -ANGLE, cameraPosition, cameraOrientation);
 		else if (event.key.keysym.sym == SDLK_u) rotateCamera("Z", ANGLE, cameraPosition, cameraOrientation);
 		else if (event.key.keysym.sym == SDLK_o) rotateCamera("Z", -ANGLE, cameraPosition, cameraOrientation);
+
+		else if (event.key.keysym.sym == SDLK_SPACE) toOrbit = !toOrbit;
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
 		window.saveBMP("output.bmp");
@@ -406,16 +397,20 @@ int main(int argc, char *argv[]) {
 
 	// Variables for camera
 	glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
+	glm::vec3 cameraOriginalPosition = glm::vec3(0.0, 0.0, 4.0);
+	glm::vec3 origin = glm::vec3(0.0, 0.0, 0.0);
 	glm::mat3 cameraOrientation = glm::mat3(
 		1, 0, 0,
 		0, 1, 0,
 		0, 0, 1
 	);
 	float focalLength = 2.0;
+	bool toOrbit = true;
+	float orbitAngle = 3.0*M_PI/4.0; // for polar coordinates, this is the bottom - initial starting point of camera is bottom of x-z circle
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
-		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, cameraOrientation);
+		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, cameraOrientation, toOrbit);
 
 		// Get triangles
 		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
@@ -425,7 +420,12 @@ int main(int argc, char *argv[]) {
 		draw3D(window, canvasTriangles, coloursMap, colourNames);
 
 		// Orbit
-		rotateCamera("Y", -ANGLE, cameraPosition, cameraOrientation);
+		/*if (toOrbit) {
+			glm::vec3 translationVector = glm::vec3(cos(orbitAngle)*focalLength, 0, sin(orbitAngle)*focalLength);
+			cameraPosition = cameraOriginalPosition + translationVector;
+			orbitAngle += ANGLE;
+		}*/
+		rotateCamera("Y", ANGLE, cameraPosition, cameraOrientation);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
