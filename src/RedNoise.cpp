@@ -134,8 +134,8 @@ CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 verte
 	float z_3d = vertexPosition.z;
 
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
-	float x_2d = (focalLength * -SCALE * (x_3d / (z_3d - cameraPosition.z))) + (WIDTH / 2) + cameraPosition.x;
-	float y_2d = (focalLength * SCALE * (y_3d / (z_3d - cameraPosition.z))) + (HEIGHT / 2) + cameraPosition.y;
+	float x_2d = (focalLength * -SCALE * ((x_3d + cameraPosition.x) / (z_3d - cameraPosition.z))) + (WIDTH / 2);
+	float y_2d = (focalLength * SCALE * ((y_3d + cameraPosition.y) / (z_3d - cameraPosition.z))) + (HEIGHT / 2);
 	float z_2d = -(z_3d - (cameraPosition.z - focalLength)); // need to shift the z backwards so that the z values start from the plane
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
@@ -321,16 +321,16 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 		clearWindow(window);
 		// Translation
 		if (event.key.keysym.sym == SDLK_a) {
-			translationVector.x += 1;
+			translationVector.x += 0.1;
 		}
 		else if (event.key.keysym.sym == SDLK_d) {
-			translationVector.x -= 1;
+			translationVector.x -= 0.1;
 		}
 		else if (event.key.keysym.sym == SDLK_w) {
-			translationVector.y += 1;
+			translationVector.y += 0.1;
 		}
 		else if (event.key.keysym.sym == SDLK_s) {
-			translationVector.y -= 1;
+			translationVector.y -= 0.1;
 		}
 		else if (event.key.keysym.sym == SDLK_q) {
 			translationVector.z += 0.1;
