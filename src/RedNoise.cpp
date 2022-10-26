@@ -27,7 +27,7 @@ glm::mat3 cameraOrientation = glm::mat3(
 );
 
 // Values for translation and rotation
-float dist = 1.0;
+float dist = 0.1;
 float angle = (1.0 / 360.0) * (2 * M_PI);
 
 // Clear screen
