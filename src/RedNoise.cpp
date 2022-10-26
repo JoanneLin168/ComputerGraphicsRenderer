@@ -14,21 +14,13 @@
 #include <fstream> // Week 4 - Task 2
 #include <unordered_map> // Week 4 - Task 3
 
-#define WIDTH 1000
-#define HEIGHT 1000
+#define WIDTH 320
+#define HEIGHT 240
 #define SCALE 150 // used for scaling onto img canvas
 
-
-// Global variables - to be changed by handleEvent
-glm::mat3 cameraOrientation = glm::mat3(
-	1, 0, 0,
-	0, 1, 0,
-	0, 0, 1
-);
-
 // Values for translation and rotation
-float dist = 0.1;
-float angle = (1.0 / 360.0) * (2 * M_PI);
+const float DIST = 0.1;
+float ANGLE = (1.0 / 360.0) * (2 * M_PI);
 
 // Clear screen
 void clearWindow(DrawingWindow& window) {
@@ -140,7 +132,7 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 
 
 // Week 4 - Task 5
-CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
+CanvasPoint getCanvasIntersectionPoint(glm::vec3 cameraPosition, glm::mat3 cameraOrientation, glm::vec3 vertexPosition, float focalLength) {
 	float x_3d = vertexPosition.x;
 	float y_3d = vertexPosition.y;
 	float z_3d = vertexPosition.z;
@@ -178,12 +170,12 @@ std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertice
 }
 
 // Week 4 - Task 7: Convert ModelTriangles to CanvasTriangles
-std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<ModelTriangle> modelTriangles, glm::vec3 cameraPosition, float focalLength) {
+std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<ModelTriangle> modelTriangles, glm::vec3 cameraPosition, glm::mat3 cameraOrientation, float focalLength) {
 	std::vector<CanvasTriangle> canvasTriangles;
 	for (ModelTriangle mTriangle : modelTriangles) {
-		CanvasPoint a = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[0], focalLength);
-		CanvasPoint b = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[1], focalLength);
-		CanvasPoint c = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[2], focalLength);
+		CanvasPoint a = getCanvasIntersectionPoint(cameraPosition, cameraOrientation, mTriangle.vertices[0], focalLength);
+		CanvasPoint b = getCanvasIntersectionPoint(cameraPosition, cameraOrientation, mTriangle.vertices[1], focalLength);
+		CanvasPoint c = getCanvasIntersectionPoint(cameraPosition, cameraOrientation, mTriangle.vertices[2], focalLength);
 		CanvasTriangle cTriangle = CanvasTriangle(a, b, c);
 		canvasTriangles.push_back(cTriangle);
 	}
@@ -377,20 +369,20 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPositi
 	if (event.type == SDL_KEYDOWN) {
 		clearWindow(window);
 		// Translation
-		if      (event.key.keysym.sym == SDLK_d) translateCamera("X", dist, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_a) translateCamera("X", -dist, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_w) translateCamera("Y", dist, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_s) translateCamera("Y", -dist, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_q) translateCamera("Z", dist, cameraPosition);
-		else if (event.key.keysym.sym == SDLK_e) translateCamera("Z", -dist, cameraPosition);
+		if      (event.key.keysym.sym == SDLK_d) translateCamera("X", DIST, cameraPosition);
+		else if (event.key.keysym.sym == SDLK_a) translateCamera("X", -DIST, cameraPosition);
+		else if (event.key.keysym.sym == SDLK_w) translateCamera("Y", DIST, cameraPosition);
+		else if (event.key.keysym.sym == SDLK_s) translateCamera("Y", -DIST, cameraPosition);
+		else if (event.key.keysym.sym == SDLK_q) translateCamera("Z", DIST, cameraPosition);
+		else if (event.key.keysym.sym == SDLK_e) translateCamera("Z", -DIST, cameraPosition);
 
 		// Rotation
-		else if (event.key.keysym.sym == SDLK_l) rotateCamera("X", angle, cameraPosition, cameraOrientation);
-		else if (event.key.keysym.sym == SDLK_j) rotateCamera("X", -angle, cameraPosition, cameraOrientation);
-		else if (event.key.keysym.sym == SDLK_i) rotateCamera("Y", angle, cameraPosition, cameraOrientation);
-		else if (event.key.keysym.sym == SDLK_k) rotateCamera("Y", -angle, cameraPosition, cameraOrientation);
-		else if (event.key.keysym.sym == SDLK_u) rotateCamera("Z", angle, cameraPosition, cameraOrientation);
-		else if (event.key.keysym.sym == SDLK_o) rotateCamera("Z", -angle, cameraPosition, cameraOrientation);
+		else if (event.key.keysym.sym == SDLK_l) rotateCamera("X", ANGLE, cameraPosition, cameraOrientation);
+		else if (event.key.keysym.sym == SDLK_j) rotateCamera("X", -ANGLE, cameraPosition, cameraOrientation);
+		else if (event.key.keysym.sym == SDLK_i) rotateCamera("Y", ANGLE, cameraPosition, cameraOrientation);
+		else if (event.key.keysym.sym == SDLK_k) rotateCamera("Y", -ANGLE, cameraPosition, cameraOrientation);
+		else if (event.key.keysym.sym == SDLK_u) rotateCamera("Z", ANGLE, cameraPosition, cameraOrientation);
+		else if (event.key.keysym.sym == SDLK_o) rotateCamera("Z", -ANGLE, cameraPosition, cameraOrientation);
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
 		window.saveBMP("output.bmp");
@@ -414,7 +406,11 @@ int main(int argc, char *argv[]) {
 
 	// Variables for camera
 	glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
-	//glm::mat3 cameraOrientation = glm::vec3((1.0, 0.0, 0.0));
+	glm::mat3 cameraOrientation = glm::mat3(
+		1, 0, 0,
+		0, 1, 0,
+		0, 0, 1
+	);
 	float focalLength = 2.0;
 
 	while (true) {
@@ -423,7 +419,7 @@ int main(int argc, char *argv[]) {
 
 		// Get triangles
 		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
-		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
+		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, cameraOrientation, focalLength);
 
 		// Draw the triangles
 		draw3D(window, canvasTriangles, coloursMap, colourNames);
