@@ -137,12 +137,6 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	float y_3d = vertexPosition.y;
 	float z_3d = vertexPosition.z;
 
-	/*glm::mat4 vertexPositionHomogeneous = glm::mat4(
-		1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		x_3d, y_3d, z_3d, 1
-	);*/
 	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 	glm::mat3 cameraOrientMat3 = glm::mat3(
 		cameraPosition[0][0], cameraPosition[0][1], cameraPosition[0][2],
