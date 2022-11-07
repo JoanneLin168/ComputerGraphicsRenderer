@@ -20,7 +20,7 @@
 
 // Values for translation and rotation
 const float DIST = 0.1;
-float ANGLE = (1.0 / 360.0) * (2 * M_PI);
+const float ANGLE = (1.0 / 360.0) * (2 * M_PI);
 
 // Clear screen
 void clearWindow(DrawingWindow& window) {
@@ -325,34 +325,39 @@ void translateCamera(glm::vec3& cameraPosition, glm::vec3 translationVector) {
 	cameraPosition = cameraPosition + translationVector;
 }
 
+void rotateCameraPosition(glm::vec3& cameraPosition, glm::mat3 rotationMatrix) {
+	cameraPosition = rotationMatrix * cameraPosition;
+}
+
+void rotateCameraOrientation(glm::mat3& cameraOrientation, glm::mat3 rotationMatrix) {
+	cameraOrientation = rotationMatrix * cameraOrientation;
+}
+
 void rotateCamera(std::string axis, float theta, glm::vec3& cameraPosition, glm::mat3& cameraOrientation) {
+	glm::mat3 rotationMatrix;
 	if (axis == "X") {
-		glm::mat3 rotationMatrixX = glm::mat3(
+		rotationMatrix = glm::mat3(
 			glm::vec3(1, 0, 0),
 			glm::vec3(0, cos(theta), sin(theta)),
 			glm::vec3(0, -sin(theta), cos(theta))
 		);
-		cameraOrientation = rotationMatrixX * cameraOrientation;
-		cameraPosition = rotationMatrixX * cameraPosition;
 	}
 	else if (axis == "Y") {
-		glm::mat3 rotationMatrixY = glm::mat3(
+		rotationMatrix = glm::mat3(
 			glm::vec3(cos(theta), 0, sin(theta)),
 			glm::vec3(0, 1, 0),
 			glm::vec3(-sin(theta), 0, cos(theta))
 		);
-		cameraOrientation = rotationMatrixY * cameraOrientation;
-		cameraPosition = rotationMatrixY * cameraPosition;
 	}
 	else if (axis == "Z") {
-		glm::mat3 rotationMatrixZ = glm::mat3(
+		rotationMatrix = glm::mat3(
 			glm::vec3(cos(theta), sin(theta), 0),
 			glm::vec3(-sin(theta), cos(theta), 0),
 			glm::vec3(0, 0, 1)
 		);
-		cameraOrientation = rotationMatrixZ * cameraOrientation;
-		cameraPosition = rotationMatrixZ * cameraPosition;
 	}
+	rotateCameraPosition(cameraPosition, rotationMatrix);
+	rotateCameraOrientation(cameraOrientation, rotationMatrix);
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::vec3 &cameraPosition, glm::mat3 &cameraOrientation, bool& toOrbit) {
@@ -395,10 +400,12 @@ int main(int argc, char *argv[]) {
 	std::string mtlFile = "cornell-box.mtl";
 	std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
 
+	// Variables in world
+	glm::vec3 origin = glm::vec3(0.0, 0.0, 0.0);
+	glm::vec3 vertical = glm::vec3(0.0, 1.0, 0.0);
+
 	// Variables for camera
 	glm::vec3 cameraPosition = glm::vec3(0.0, 0.0, 4.0);
-	glm::vec3 cameraOriginalPosition = glm::vec3(0.0, 0.0, 4.0);
-	glm::vec3 origin = glm::vec3(0.0, 0.0, 0.0);
 	glm::mat3 cameraOrientation = glm::mat3(
 		1, 0, 0,
 		0, 1, 0,
@@ -406,7 +413,6 @@ int main(int argc, char *argv[]) {
 	);
 	float focalLength = 2.0;
 	bool toOrbit = true;
-	float orbitAngle = 3.0*M_PI/4.0; // for polar coordinates, this is the bottom - initial starting point of camera is bottom of x-z circle
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
@@ -420,12 +426,22 @@ int main(int argc, char *argv[]) {
 		draw3D(window, canvasTriangles, coloursMap, colourNames);
 
 		// Orbit
-		/*if (toOrbit) {
-			glm::vec3 translationVector = glm::vec3(cos(orbitAngle)*focalLength, 0, sin(orbitAngle)*focalLength);
-			cameraPosition = cameraOriginalPosition + translationVector;
-			orbitAngle += ANGLE;
-		}*/
-		rotateCamera("Y", ANGLE, cameraPosition, cameraOrientation);
+		glm::mat3 rotationMatrixY = glm::mat3(
+			glm::vec3(cos(ANGLE), 0, sin(ANGLE)),
+			glm::vec3(0, 1, 0),
+			glm::vec3(-sin(ANGLE), 0, cos(ANGLE))
+		);
+		if (toOrbit) {
+			rotateCameraPosition(cameraPosition, rotationMatrixY);
+		}
+
+		// LookAt
+		// forward, up and right are relative to the camera
+		// vertical is relative to the world (0,1,0)
+		glm::vec3 forward = glm::normalize(cameraPosition - origin);
+		glm::vec3 right = glm::cross(vertical, forward);
+		glm::vec3 up = glm::cross(forward, right);
+		cameraOrientation = glm::mat3(right, up, forward);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
