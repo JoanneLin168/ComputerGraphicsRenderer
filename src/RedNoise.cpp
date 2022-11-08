@@ -84,8 +84,11 @@ std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::stri
 			vertices.push_back(vs);
 		}
 		else if (line[0] == 'f') {
-			std::vector<std::string> facetsStr = split(line, '/ ');
-			glm::vec3 fs(std::stoi(facetsStr[1]), std::stoi(facetsStr[2]), std::stoi(facetsStr[3]));
+			std::vector<std::string> facetsStr = split(line, ' ');
+			std::string x = facetsStr[1].substr(0, facetsStr[1].size() - 1);
+			std::string y = facetsStr[2].substr(0, facetsStr[2].size() - 1);
+			std::string z = facetsStr[3].substr(0, facetsStr[3].size() - 1);
+			glm::vec3 fs(std::stoi(x), std::stoi(y), std::stoi(z));
 			facets.push_back(fs);
 			colours.push_back(colourName); // push colour for every facet of the same colour, so facet[i] has colours[i]
 		}
@@ -161,7 +164,7 @@ std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertice
 	std::vector<std::string> colourNames,
 	std::unordered_map<std::string, Colour> coloursMap) {
 	std::vector<ModelTriangle> results;
-	for (int i = 0; i < facets.size(); i++) {
+	for (size_t i = 0; i < facets.size(); i++) {
 		glm::vec3 facet = facets[i];
 		int xIndex = facet.x;
 		int yIndex = facet.y;
@@ -281,10 +284,10 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
 	// Rasterise - refer to depthArray
-	for (int i = 0; i < pointsAToC.size(); i++) {
+	for (size_t i = 0; i < pointsAToC.size(); i++) {
 		drawLine(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
 	}
-	for (int i = 0; i < pointsBToC.size(); i++) {
+	for (size_t i = 0; i < pointsBToC.size(); i++) {
 		drawLine(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
 	}
 	drawLine(window, barrierStart, barrierEnd, colour, depthArray);
@@ -377,7 +380,7 @@ void drawRasterisedScene(DrawingWindow& window, std::vector<CanvasTriangle> tria
 	// Create a depth array
 	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
 
-	for (int i = 0; i < triangles.size(); i++) {
+	for (size_t i = 0; i < triangles.size(); i++) {
 		CanvasTriangle triangle = triangles[i];
 		Colour colour = coloursMap[colourNames[i]];
 		drawFilledTriangle(window, triangle, colour, depthArray);
@@ -444,7 +447,7 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 			}
 
 			// Draw point if the ray hit something
-			if (closestRayTriangleIntersection.triangleIndex != -1) {
+			if (closestRayTriangleIntersection.triangleIndex >= 0) {
 				ModelTriangle triangle = closestRayTriangleIntersection.intersectedTriangle;
 				uint32_t colour = (255 << 24) + (int(triangle.colour.red) << 16) + (int(triangle.colour.green) << 8) + int(triangle.colour.blue);
 				window.setPixelColour(x, y, colour);
