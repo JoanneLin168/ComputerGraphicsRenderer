@@ -132,6 +132,8 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 	return coloursMap;
 }
 
+// =================================================== RASTERISE ======================================================== //
+
 // Week 4 - Task 5
 CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
 	float x_3d = vertexPosition.x;
@@ -155,32 +157,6 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
 	return intersectionPoint;
-}
-
-// Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
-RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
-	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-
-	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
-	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
-	glm::vec3 SPVector = cameraPosVec3 - triangle.vertices[0];
-	glm::mat3 DEMatrix(-rayDirection, e0, e1);
-
-	// possibleSolution = (t,u,v) where
-	//    t = absolute distance from camera to intersection point
-	//    u = proportional distance along first edge
-	//    v = proportional distance along second edge
-	glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;
-
-	float t = possibleSolution[1];
-	float u = possibleSolution[1];
-	float v = possibleSolution[2];
-	glm::vec3 r;
-	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (u + v) <= 1.0 && t >= 0) {
-		r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
-	}
-
-	return RayTriangleIntersection(r, t, triangle, (size_t)index);
 }
 
 // Week 4 - Task 7: Create vector of ModelTriangles
@@ -398,9 +374,8 @@ void lookAt(glm::mat4& cameraPosition) {
 
 }
 
-// RASTERISE and RAYTRACING
 // Week 4 - Task 9
-void drawRasteriseScene(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+void drawRasterisedScene(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
 	clearWindow(window);
 
 	// Create a depth array
@@ -410,6 +385,75 @@ void drawRasteriseScene(DrawingWindow& window, std::vector<CanvasTriangle> trian
 		CanvasTriangle triangle = triangles[i];
 		Colour colour = coloursMap[colourNames[i]];
 		drawFilledTriangle(window, triangle, colour, depthArray);
+	}
+}
+
+// =================================================== RAY TRACING ======================================================== //
+// Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
+RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
+	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+
+	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
+	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
+	glm::vec3 SPVector = cameraPosVec3 - triangle.vertices[0];
+	glm::mat3 DEMatrix(-rayDirection, e0, e1);
+
+	// possibleSolution = (t,u,v) where
+	//    t = absolute distance from camera to intersection point
+	//    u = proportional distance along first edge
+	//    v = proportional distance along second edge
+	glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;
+
+	float t = possibleSolution[0];
+	float u = possibleSolution[1];
+	float v = possibleSolution[2];
+	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (u + v) <= 1.0 && t >= 0) {
+		glm::vec3 r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
+		return RayTriangleIntersection(r, t, triangle, (size_t)index);
+	}
+	else {
+		return RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
+	}
+
+	
+}
+
+// ==================================== DRAW ======================================= //
+
+void drawRayTracingScene(DrawingWindow& window, glm::mat4 cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+	clearWindow(window);
+
+	for (int y = 0; y < HEIGHT; y++) {
+		for (int x = 0; x < WIDTH; x++) {
+			int index = 0;
+			RayTriangleIntersection closestRayTriangleIntersection = RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
+
+			// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
+			for (ModelTriangle triangle : triangles) {
+				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+				glm::vec3 rayDirection = glm::vec3(x, y, 0) - cameraPosVec3; // from the camera to the scence, so to - from = scene - camera
+
+				float x_3d = ((rayDirection.x-(WIDTH/2)) * -rayDirection.z) / (focalLength * SCALE);
+				float y_3d = ((rayDirection.y-(HEIGHT/2)) * rayDirection.z) / (focalLength * SCALE);
+				float z_3d = rayDirection.z;
+
+				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosition, triangle, glm::vec3(x_3d, y_3d, z_3d), index);
+				
+				// check if point on triangle is closer to camera than the previously stored one
+				if (rayTriangleIntersection.distanceFromCamera < closestRayTriangleIntersection.distanceFromCamera) {
+					closestRayTriangleIntersection = rayTriangleIntersection;
+				}
+
+				//std::cout << rayTriangleIntersection.distanceFromCamera << std::endl;
+				index++;
+			}
+
+			if (closestRayTriangleIntersection.triangleIndex != -1) {
+				ModelTriangle triangle = closestRayTriangleIntersection.intersectedTriangle;
+				uint32_t colour = (255 << 24) + (int(triangle.colour.red) << 16) + (int(triangle.colour.green) << 8) + int(triangle.colour.blue);
+				window.setPixelColour(floor(x), ceil(y), colour);
+			}
+		}
 	}
 }
 
@@ -482,13 +526,14 @@ int main(int argc, char *argv[]) {
 		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
 
 		// Rasterise
-		drawRasteriseScene(window, canvasTriangles, coloursMap, colourNames);
+		//drawRasterisedScene(window, canvasTriangles, coloursMap, colourNames);
 
 		// Orbit and LookAt
-		if (toOrbit) {
+		/*if (toOrbit) {
 			rotateCameraPosition(cameraPosition, rotationMatrixY);
 			lookAt(cameraPosition);
-		}
+		}*/
+		drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
