@@ -130,7 +130,6 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 	return coloursMap;
 }
 
-
 // Week 4 - Task 5
 CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
 	float x_3d = vertexPosition.x;
@@ -154,6 +153,32 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
 	return intersectionPoint;
+}
+
+// Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
+CanvasPoint getClosestIntersection(glm::mat4 cameraPosition, ModelTriangle triangle, glm::vec3 rayDirection) {
+	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+
+	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
+	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
+	glm::vec3 SPVector = cameraPosVec3 - triangle.vertices[0];
+	glm::mat3 DEMatrix(-rayDirection, e0, e1);
+
+	// possibleSolution = (t,u,v) where
+	//    t = absolute distance from camera to intersection point
+	//    u = proportional distance along first edge
+	//    v = proportional distance along second edge
+	glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;
+
+	float t = possibleSolution[1];
+	float u = possibleSolution[1];
+	float v = possibleSolution[2];
+	glm::vec3 r;
+	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (u + v) <= 1.0 && t >= 0) {
+		r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
+	}
+
+	return CanvasPoint(r.x, r.y, r.z);
 }
 
 // Week 4 - Task 7: Create vector of ModelTriangles
@@ -292,7 +317,6 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour, depthArray);
 }
 
-
 // Week 4 - Task 9
 void draw3D(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
 	clearWindow(window);
@@ -305,25 +329,6 @@ void draw3D(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::u
 		Colour colour = coloursMap[colourNames[i]];
 		drawFilledTriangle(window, triangle, colour, depthArray);
 	}
-}
-
-// ==================================== RANDOM ======================================= //
-// Generate Random objects
-CanvasPoint createRandomPoint() {
-	float x = rand() % WIDTH;
-	float y = rand() % HEIGHT;
-	return CanvasPoint(x, y);
-}
-
-CanvasTriangle createRandomTriangle() {
-	return CanvasTriangle(createRandomPoint(), createRandomPoint(), createRandomPoint());
-}
-
-Colour createRandomColour() {
-	int r = rand() % 256;
-	int g = rand() % 256;
-	int b = rand() % 256;
-	return Colour(r, g, b);
 }
 
 // ==================================== TRANSFORM CAMERA ======================================= //
