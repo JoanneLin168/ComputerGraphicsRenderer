@@ -217,7 +217,7 @@ std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<Mod
 }
 
 // ==================================== DRAW ======================================= //
-void draw(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour, std::vector<std::vector<float>>& depthArray) {
+void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour, std::vector<std::vector<float>>& depthArray) {
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
@@ -253,9 +253,9 @@ void draw(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour colour
 
 // Week 3 - Task 3
 void drawTriangle(DrawingWindow& window, CanvasPoint a, CanvasPoint b, CanvasPoint c, Colour colour, std::vector<std::vector<float>>& depthArray) {
-	draw(window, a, b, colour, depthArray); // Draw line a to b
-	draw(window, a, c, colour, depthArray); // Draw line a to c
-	draw(window, b, c, colour, depthArray); // Draw line b to c
+	drawLine(window, a, b, colour, depthArray); // Draw line a to b
+	drawLine(window, a, c, colour, depthArray); // Draw line a to c
+	drawLine(window, b, c, colour, depthArray); // Draw line b to c
 }
 
 std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
@@ -310,27 +310,13 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 	// Rasterise - refer to depthArray
 	for (int i = 0; i < pointsAToC.size(); i++) {
-		draw(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
+		drawLine(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
 	}
 	for (int i = 0; i < pointsBToC.size(); i++) {
-		draw(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
+		drawLine(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
 	}
-	draw(window, barrierStart, barrierEnd, colour, depthArray);
+	drawLine(window, barrierStart, barrierEnd, colour, depthArray);
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour, depthArray);
-}
-
-// Week 4 - Task 9
-void draw3D(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
-	clearWindow(window);
-
-	// Create a depth array
-	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
-
-	for (int i = 0; i < triangles.size(); i++) {
-		CanvasTriangle triangle = triangles[i];
-		Colour colour = coloursMap[colourNames[i]];
-		drawFilledTriangle(window, triangle, colour, depthArray);
-	}
 }
 
 // ==================================== TRANSFORM CAMERA ======================================= //
@@ -394,6 +380,21 @@ void rotateCamera(std::string axis, float theta, glm::mat4& cameraPosition) {
 		);
 	}
 	rotateCameraPosition(cameraPosition, rotationMatrix);
+}
+
+// RASTERISE and RAYTRACING
+// Week 4 - Task 9
+void drawRasterise(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+	clearWindow(window);
+
+	// Create a depth array
+	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
+
+	for (int i = 0; i < triangles.size(); i++) {
+		CanvasTriangle triangle = triangles[i];
+		Colour colour = coloursMap[colourNames[i]];
+		drawFilledTriangle(window, triangle, colour, depthArray);
+	}
 }
 
 // REFERENCE: http://www.cs.nott.ac.uk/~pszqiu/Teaching/Courses/G5BAGR/Slides/4-transform.pdf
@@ -460,7 +461,7 @@ int main(int argc, char *argv[]) {
 		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
 
 		// Draw the triangles
-		draw3D(window, canvasTriangles, coloursMap, colourNames);
+		drawRasterise(window, canvasTriangles, coloursMap, colourNames);
 
 		// Orbit
 		glm::mat4 rotationMatrixY = glm::mat4(
