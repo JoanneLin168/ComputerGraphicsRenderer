@@ -150,7 +150,7 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
 	float x_2d = (focalLength * SCALE * (distanceFromCamera.x / -distanceFromCamera.z)) + (WIDTH / 2);
 	float y_2d = (focalLength * SCALE * (distanceFromCamera.y / distanceFromCamera.z)) + (HEIGHT / 2);
-	float z_2d = -(z_3d + distanceFromCamera.z); // need to shift the z backwards so that the z values start from the plane
+	float z_2d = -(distanceFromCamera.z);
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
@@ -382,9 +382,25 @@ void rotateCamera(std::string axis, float theta, glm::mat4& cameraPosition) {
 	rotateCameraPosition(cameraPosition, rotationMatrix);
 }
 
+// LookAt function
+void lookAt(glm::mat4& cameraPosition) {
+	// Variables in world
+	glm::vec3 origin = glm::vec3(0.0, 0.0, 0.0);
+	glm::vec3 vertical = glm::vec3(0.0, 1.0, 0.0);
+
+	// forward, up and right are relative to the camera
+	// vertical is relative to the world (0,1,0)
+	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+	glm::vec3 forward = glm::normalize(cameraPosVec3 - origin);
+	glm::vec3 right = glm::cross(vertical, forward);
+	glm::vec3 up = glm::cross(forward, right);
+	cameraPosition = glm::mat4(glm::vec4(right, 0), glm::vec4(up, 0), glm::vec4(forward, 0), cameraPosition[3]);
+
+}
+
 // RASTERISE and RAYTRACING
 // Week 4 - Task 9
-void drawRasterise(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+void drawRasteriseScene(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
 	clearWindow(window);
 
 	// Create a depth array
@@ -438,9 +454,7 @@ int main(int argc, char *argv[]) {
 	std::string mtlFile = "cornell-box.mtl";
 	std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
 
-	// Variables in world
-	glm::vec3 origin = glm::vec3(0.0, 0.0, 0.0);
-	glm::vec3 vertical = glm::vec3(0.0, 1.0, 0.0);
+	std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
 
 	// Variables for camera
 	glm::mat4 cameraPosition = glm::mat4(
@@ -452,36 +466,29 @@ int main(int argc, char *argv[]) {
 	float focalLength = 2.0;
 	bool toOrbit = true;
 
+	// rotationMatrix in Y axis
+	glm::mat4 rotationMatrixY = glm::mat4(
+		cos(ANGLE), 0, sin(ANGLE), 0,
+		0, 1, 0, 0,
+		-sin(ANGLE), 0, cos(ANGLE), 0,
+		0, 0, 0, 1
+	);
+
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, toOrbit);
 
 		// Get triangles
-		std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
 		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
 
-		// Draw the triangles
-		drawRasterise(window, canvasTriangles, coloursMap, colourNames);
+		// Rasterise
+		drawRasteriseScene(window, canvasTriangles, coloursMap, colourNames);
 
-		// Orbit
-		glm::mat4 rotationMatrixY = glm::mat4(
-			cos(ANGLE), 0, sin(ANGLE), 0,
-			0, 1, 0, 0,
-			-sin(ANGLE), 0, cos(ANGLE), 0,
-			0, 0, 0, 1
-		);
+		// Orbit and LookAt
 		if (toOrbit) {
 			rotateCameraPosition(cameraPosition, rotationMatrixY);
+			lookAt(cameraPosition);
 		}
-
-		// LookAt
-		// forward, up and right are relative to the camera
-		// vertical is relative to the world (0,1,0)
-		glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-		glm::vec3 forward = glm::normalize(cameraPosVec3 - origin);
-		glm::vec3 right = glm::cross(vertical, forward);
-		glm::vec3 up = glm::cross(forward, right);
-		cameraPosition = glm::mat4(glm::vec4(right, 0), glm::vec4(up, 0), glm::vec4(forward, 0), cameraPosition[3]);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
