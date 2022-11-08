@@ -136,10 +136,6 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 
 // Week 4 - Task 5
 CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 vertexPosition, float focalLength) {
-	float x_3d = vertexPosition.x;
-	float y_3d = vertexPosition.y;
-	float z_3d = vertexPosition.z;
-
 	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 	glm::mat3 cameraOrientMat3 = glm::mat3(
 		cameraPosition[0][0], cameraPosition[0][1], cameraPosition[0][2],
@@ -420,7 +416,7 @@ RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTr
 
 // ==================================== DRAW ======================================= //
 
-void drawRayTracingScene(DrawingWindow& window, glm::mat4 cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
 	clearWindow(window);
 
 	for (int y = 0; y < HEIGHT; y++) {
@@ -431,11 +427,11 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4 cameraPosition, std::v
 			// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
 			for (ModelTriangle triangle : triangles) {
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-				glm::vec3 rayDirection = glm::vec3(x, y, 0) - cameraPosVec3; // from the camera to the scence, so to - from = scene - camera
+				glm::vec3 rayDirection = glm::vec3(x, y, 0) - cameraPosVec3; // ray is from the camera to the scene, so to - from = scene - camera
 
 				float x_3d = ((rayDirection.x-(WIDTH/2)) * -rayDirection.z) / (focalLength * SCALE);
 				float y_3d = ((rayDirection.y-(HEIGHT/2)) * rayDirection.z) / (focalLength * SCALE);
-				float z_3d = rayDirection.z;
+				float z_3d = rayDirection.z; // apparently z doesn't particularly matter
 
 				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosition, triangle, glm::vec3(x_3d, y_3d, z_3d), index);
 				
@@ -444,14 +440,14 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4 cameraPosition, std::v
 					closestRayTriangleIntersection = rayTriangleIntersection;
 				}
 
-				//std::cout << rayTriangleIntersection.distanceFromCamera << std::endl;
 				index++;
 			}
 
+			// Draw point if the ray hit something
 			if (closestRayTriangleIntersection.triangleIndex != -1) {
 				ModelTriangle triangle = closestRayTriangleIntersection.intersectedTriangle;
 				uint32_t colour = (255 << 24) + (int(triangle.colour.red) << 16) + (int(triangle.colour.green) << 8) + int(triangle.colour.blue);
-				window.setPixelColour(floor(x), ceil(y), colour);
+				window.setPixelColour(x, y, colour);
 			}
 		}
 	}
@@ -510,30 +506,24 @@ int main(int argc, char *argv[]) {
 	float focalLength = 2.0;
 	bool toOrbit = true;
 
-	// rotationMatrix in Y axis
-	glm::mat4 rotationMatrixY = glm::mat4(
-		cos(ANGLE), 0, sin(ANGLE), 0,
-		0, 1, 0, 0,
-		-sin(ANGLE), 0, cos(ANGLE), 0,
-		0, 0, 0, 1
-	);
-
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, toOrbit);
 
 		// Get triangles
-		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
+		//std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
 
 		// Rasterise
 		//drawRasterisedScene(window, canvasTriangles, coloursMap, colourNames);
+		
+		// Raytracing
+		drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
 
 		// Orbit and LookAt
-		/*if (toOrbit) {
-			rotateCameraPosition(cameraPosition, rotationMatrixY);
+		if (toOrbit) {
+			rotateCamera("Y", ANGLE, cameraPosition);
 			lookAt(cameraPosition);
-		}*/
-		drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
+		}
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
