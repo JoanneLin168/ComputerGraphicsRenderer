@@ -14,6 +14,8 @@
 #include <fstream> // Week 4 - Task 2
 #include <unordered_map> // Week 4 - Task 3
 
+#include <RayTriangleIntersection.h> // Week 7 - Task 2 
+
 #define WIDTH 320
 #define HEIGHT 240
 #define SCALE 150 // used for scaling onto img canvas
@@ -156,7 +158,7 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 }
 
 // Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
-CanvasPoint getClosestIntersection(glm::mat4 cameraPosition, ModelTriangle triangle, glm::vec3 rayDirection) {
+RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
 	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 
 	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
@@ -178,7 +180,7 @@ CanvasPoint getClosestIntersection(glm::mat4 cameraPosition, ModelTriangle trian
 		r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
 	}
 
-	return CanvasPoint(r.x, r.y, r.z);
+	return RayTriangleIntersection(r, t, triangle, (size_t)index);
 }
 
 // Week 4 - Task 7: Create vector of ModelTriangles
