@@ -192,7 +192,7 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	float yIncrement = yDiff / numberOfValues;
 	float zIncrement = zDiff / numberOfValues;
 
-	for (float i = 0; i < numberOfValues; i++) {
+	for (size_t i = 0; i < numberOfValues; i++) {
 		float x = float(from.x + float(xIncrement * i));
 		float y = float(from.y + float(yIncrement * i));
 		float z = float(from.depth + float(zIncrement * i));
@@ -205,11 +205,11 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 		float depthInverse = 1 / z; // negative was changed in getCanvasIntersectionPoint()
 		if (ceil(y) >=0 && ceil(y) < HEIGHT && floor(x) >= 0 && floor(x) < WIDTH) {
 			if (depthInverse > depthArray[ceil(y)][floor(x)]) {
-				depthArray[(int)ceil(y)][(int)floor(x)] = depthInverse;
+				depthArray[(size_t)ceil(y)][(size_t)floor(x)] = depthInverse;
 				window.setPixelColour((size_t)floor(x), (size_t)ceil(y), colour);
 			}
 			else if (depthArray[(int)ceil(y)][(int)floor(x)] == 0) {
-				depthArray[(int)ceil(y)][(int)floor(x)] = depthInverse;
+				depthArray[(size_t)ceil(y)][(size_t)floor(x)] = depthInverse;
 				window.setPixelColour((size_t)floor(x), (size_t)ceil(y), colour);
 			}
 		}
@@ -412,8 +412,8 @@ RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTr
 void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
 	window.clearPixels();
 
-	for (int y = 0; y < HEIGHT; y++) {
-		for (int x = 0; x < WIDTH; x++) {
+	for (size_t y = 0; y < HEIGHT; y++) {
+		for (size_t x = 0; x < WIDTH; x++) {
 			int index = 0;
 			RayTriangleIntersection closestRayTriangleIntersection = RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
 
@@ -488,6 +488,8 @@ int main(int argc, char *argv[]) {
 	std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
 
 	std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
+
+	std::cout << colourNames.size() << " " << modelTriangles.size() << std::endl;
 
 	// Variables for camera
 	glm::mat4 cameraPosition = glm::mat4(
