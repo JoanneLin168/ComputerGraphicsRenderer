@@ -21,18 +21,8 @@
 #define SCALE 150 // used for scaling onto img canvas
 
 // Values for translation and rotation
-const float DIST = 0.1;
-const float ANGLE = (1.0 / 360.0) * (2 * M_PI);
-
-// Clear screen
-void clearWindow(DrawingWindow& window) {
-	uint32_t colour = (255 << 24) + (0 << 16) + (0 << 8) + 0;
-	for (int y = 0; y < HEIGHT; y++) {
-		for (int x = 0; x < WIDTH; x++) {
-			window.setPixelColour(x, y, colour);
-		}
-	}
-}
+const float DIST = float(0.1);
+const float ANGLE = float((1.0 / 360.0) * (2 * M_PI));
 
 // Week 3 - Task 4
 // Interpolate - for rasterising
@@ -121,9 +111,9 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 		}
 		else if (split(line, ' ')[0] == "Kd") {
 			std::vector<std::string> rgbStr = split(line, ' ');
-			int r = round(std::stof(rgbStr[1]) * 255);
-			int g = round(std::stof(rgbStr[2]) * 255);
-			int b = round(std::stof(rgbStr[3]) * 255);
+			int r = (int)round(std::stof(rgbStr[1]) * 255);
+			int g = (int)round(std::stof(rgbStr[2]) * 255);
+			int b = (int)round(std::stof(rgbStr[3]) * 255);
 
 			Colour colour = Colour(r, g, b);
 			colour.name = colourName;
@@ -166,11 +156,11 @@ std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertice
 	std::vector<ModelTriangle> results;
 	for (size_t i = 0; i < facets.size(); i++) {
 		glm::vec3 facet = facets[i];
-		int xIndex = facet.x;
+		/*int xIndex = facet.x;
 		int yIndex = facet.y;
-		int zIndex = facet.z;
+		int zIndex = facet.z;*/
 		Colour colour = coloursMap[colourNames[i]];
-		ModelTriangle triangle_3d = ModelTriangle(vertices[xIndex], vertices[yIndex], vertices[zIndex], colour);
+		ModelTriangle triangle_3d = ModelTriangle(vertices[facet.x], vertices[facet.y], vertices[facet.z], colour);
 		results.push_back(triangle_3d);
 	}
 	results.shrink_to_fit();
@@ -206,21 +196,21 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 		float x = float(from.x + float(xIncrement * i));
 		float y = float(from.y + float(yIncrement * i));
 		float z = float(from.depth + float(zIncrement * i));
-		float red = colour.red;
-		float green = colour.green;
-		float blue = colour.blue;
+		float red = (float)colour.red;
+		float green = (float)colour.green;
+		float blue = (float)colour.blue;
 		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
 
 		// If the distance is closer to the screen (1/z bigger than value in depthArray[y][x]) then draw pixel
 		float depthInverse = 1 / z; // negative was changed in getCanvasIntersectionPoint()
 		if (ceil(y) >=0 && ceil(y) < HEIGHT && floor(x) >= 0 && floor(x) < WIDTH) {
 			if (depthInverse > depthArray[ceil(y)][floor(x)]) {
-				depthArray[ceil(y)][floor(x)] = depthInverse;
-				window.setPixelColour(floor(x), ceil(y), colour);
+				depthArray[(int)ceil(y)][(int)floor(x)] = depthInverse;
+				window.setPixelColour((size_t)floor(x), (size_t)ceil(y), colour);
 			}
-			else if (depthArray[ceil(y)][floor(x)] == 0) {
-				depthArray[ceil(y)][floor(x)] = depthInverse;
-				window.setPixelColour(floor(x), ceil(y), colour);
+			else if (depthArray[(int)ceil(y)][(int)floor(x)] == 0) {
+				depthArray[(int)ceil(y)][(int)floor(x)] = depthInverse;
+				window.setPixelColour((size_t)floor(x), (size_t)ceil(y), colour);
 			}
 		}
 	}
@@ -375,7 +365,7 @@ void lookAt(glm::mat4& cameraPosition) {
 
 // Week 4 - Task 9
 void drawRasterisedScene(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
-	clearWindow(window);
+	window.clearPixels();
 
 	// Create a depth array
 	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
@@ -406,7 +396,7 @@ RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTr
 	float t = possibleSolution[0];
 	float u = possibleSolution[1];
 	float v = possibleSolution[2];
-	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (u + v) <= 1.0 && t >= 0) {
+	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (double(u) + double(v)) <= 1.0 && t >= 0) {
 		glm::vec3 r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
 		return RayTriangleIntersection(r, t, triangle, (size_t)index);
 	}
@@ -420,7 +410,7 @@ RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTr
 // ==================================== DRAW ======================================= //
 
 void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
-	clearWindow(window);
+	window.clearPixels();
 
 	for (int y = 0; y < HEIGHT; y++) {
 		for (int x = 0; x < WIDTH; x++) {
