@@ -514,13 +514,13 @@ int main(int argc, char *argv[]) {
 		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, toOrbit);
 
 		// Get triangles
-		//std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
+		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
 
 		// Rasterise
-		//drawRasterisedScene(window, canvasTriangles, coloursMap, colourNames);
+		drawRasterisedScene(window, canvasTriangles, coloursMap, colourNames);
 		
 		// Raytracing
-		drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
+		//drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
 
 		// Orbit and LookAt
 		if (toOrbit) {
