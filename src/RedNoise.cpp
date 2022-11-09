@@ -420,13 +420,21 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 			// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
 			for (ModelTriangle triangle : triangles) {
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-				glm::vec3 rayDirection = glm::vec3(x, y, 0) - cameraPosVec3; // ray is from the camera to the scene, so to - from = scene - camera
+				glm::vec3 rayDirectionOriented = glm::vec3(x, y, 0) - cameraPosVec3; // ray is from the camera to the scene, so to - from = scene - camera
 
-				float x_3d = ((rayDirection.x-(WIDTH/2)) * -rayDirection.z) / (focalLength * SCALE);
-				float y_3d = ((rayDirection.y-(HEIGHT/2)) * rayDirection.z) / (focalLength * SCALE);
-				float z_3d = rayDirection.z; // apparently z doesn't particularly matter
+				float x_3d = ((rayDirectionOriented.x-(WIDTH/2)) * -rayDirectionOriented.z) / (focalLength * SCALE);
+				float y_3d = ((rayDirectionOriented.y-(HEIGHT/2)) * rayDirectionOriented.z) / (focalLength * SCALE);
+				float z_3d = rayDirectionOriented.z; // apparently z doesn't particularly matter
 
-				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosition, triangle, glm::vec3(x_3d, y_3d, z_3d), index);
+
+				glm::mat3 cameraOrientMat3 = glm::mat3(
+					cameraPosition[0][0], cameraPosition[0][1], cameraPosition[0][2],
+					cameraPosition[1][0], cameraPosition[1][1], cameraPosition[1][2],
+					cameraPosition[2][0], cameraPosition[2][1], cameraPosition[2][2]
+				);
+				glm::vec3 rayDirection = cameraOrientMat3 * glm::vec3(x_3d, y_3d, z_3d);
+
+				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosition, triangle, rayDirection, index);
 				
 				// check if point on triangle is closer to camera than the previously stored one
 				if (rayTriangleIntersection.distanceFromCamera < closestRayTriangleIntersection.distanceFromCamera) {
@@ -489,8 +497,6 @@ int main(int argc, char *argv[]) {
 
 	std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
 
-	std::cout << colourNames.size() << " " << modelTriangles.size() << std::endl;
-
 	// Variables for camera
 	glm::mat4 cameraPosition = glm::mat4(
 		1, 0, 0, 0,
@@ -506,19 +512,20 @@ int main(int argc, char *argv[]) {
 		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, toOrbit);
 
 		// Get triangles
-		std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
+		//std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
 
 		// Rasterise
-		drawRasterisedScene(window, canvasTriangles, coloursMap, colourNames);
+		//drawRasterisedScene(window, canvasTriangles, coloursMap, colourNames);
 		
 		// Raytracing
-		//drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
+		drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
 
 		// Orbit and LookAt
 		if (toOrbit) {
 			rotateCamera("Y", ANGLE, cameraPosition);
-			lookAt(cameraPosition);
 		}
+
+		lookAt(cameraPosition);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
