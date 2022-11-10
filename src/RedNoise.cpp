@@ -488,8 +488,8 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 	}
 
 	// Single-threaded
-	std::thread t1(cameraFireRays, std::ref(closestTriangleBuffer), cameraPosition, triangles, focalLength, 0, HEIGHT);
-	t1.join();
+	/*std::thread t1(cameraFireRays, std::ref(closestTriangleBuffer), cameraPosition, triangles, focalLength, 0, HEIGHT);
+	t1.join();*/
 
 	for (size_t y = 0; y < HEIGHT; y++) {
 		for (size_t x = 0; x < WIDTH; x++) {
