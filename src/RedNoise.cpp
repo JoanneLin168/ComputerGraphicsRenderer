@@ -15,6 +15,8 @@
 #include <unordered_map> // Week 4 - Task 3
 
 #include <RayTriangleIntersection.h> // Week 7 - Task 2 
+#include <thread> // For multithreading
+#include <mutex>
 
 #define WIDTH 320
 #define HEIGHT 240
@@ -409,21 +411,28 @@ RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTr
 
 // ==================================== DRAW ======================================= //
 
-void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
-	window.clearPixels();
+std::mutex mtx;
 
-	for (size_t y = 0; y < HEIGHT; y++) {
+// no idea what to name this that would also be applicable to shadows, so it's called fireRays :D. RayGun is camera/light
+void cameraFireRays(std::vector<std::vector<int>>& closestTriangleBuffer,
+	glm::mat4 cameraPosition,
+	std::vector<ModelTriangle> triangles,
+	float focalLength,
+	size_t startY,
+	size_t endY) {
+
+	for (size_t y = startY; y < endY; y++) {
 		for (size_t x = 0; x < WIDTH; x++) {
 			int index = 0;
-			RayTriangleIntersection closestRayTriangleIntersection = RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
+			RayTriangleIntersection closestRayTriangleIntersection = RayTriangleIntersection(glm::vec3(), 10000, ModelTriangle(), -1);
 
 			// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
 			for (ModelTriangle triangle : triangles) {
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 				glm::vec3 rayDirectionOriented = glm::vec3(x, y, 0) - cameraPosVec3; // ray is from the camera to the scene, so to - from = scene - camera
 
-				float x_3d = ((rayDirectionOriented.x-(WIDTH/2)) * -rayDirectionOriented.z) / (focalLength * SCALE);
-				float y_3d = ((rayDirectionOriented.y-(HEIGHT/2)) * rayDirectionOriented.z) / (focalLength * SCALE);
+				float x_3d = ((rayDirectionOriented.x - (WIDTH / 2)) * -rayDirectionOriented.z) / (focalLength * SCALE);
+				float y_3d = ((rayDirectionOriented.y - (HEIGHT / 2)) * rayDirectionOriented.z) / (focalLength * SCALE);
 				float z_3d = rayDirectionOriented.z; // apparently z doesn't particularly matter
 
 
@@ -435,7 +444,7 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 				glm::vec3 rayDirection = cameraOrientMat3 * glm::vec3(x_3d, y_3d, z_3d);
 
 				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosition, triangle, rayDirection, index);
-				
+
 				// check if point on triangle is closer to camera than the previously stored one
 				if (rayTriangleIntersection.distanceFromCamera < closestRayTriangleIntersection.distanceFromCamera) {
 					closestRayTriangleIntersection = rayTriangleIntersection;
@@ -444,15 +453,56 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 				index++;
 			}
 
+			// TODO: make this drawing bit in the main thread, have calculations in threads
 			// Draw point if the ray hit something
 			if (closestRayTriangleIntersection.triangleIndex >= 0) {
-				ModelTriangle triangle = closestRayTriangleIntersection.intersectedTriangle;
+				mtx.lock();
+				closestTriangleBuffer[y][x] = closestRayTriangleIntersection.triangleIndex;
+				mtx.unlock();
+			}
+		}
+	}
+}
+
+void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+	window.clearPixels();
+
+	std::vector<std::vector<int>> closestTriangleBuffer(HEIGHT, std::vector<int>(WIDTH, -1)); // similar to depthArray, but stores index of closest triangle
+
+	// Multithreading
+	const size_t num_threads = std::thread::hardware_concurrency();
+	std::vector<std::thread> threads;
+	threads.reserve(num_threads);
+	int sectionSize = HEIGHT / num_threads;
+
+	// Call threads
+	for (int i = 0; i < num_threads; i++) {
+		int startY = i * sectionSize;
+		int endY = (i + 1) * sectionSize;
+		threads.push_back(std::thread(cameraFireRays, std::ref(closestTriangleBuffer), cameraPosition, triangles, focalLength, startY, endY));
+	}
+
+	// Wait for threads to finish tasks
+	for (std::thread& t : threads) {
+		t.join();
+	}
+
+	// Single-threaded
+	std::thread t1(cameraFireRays, std::ref(closestTriangleBuffer), cameraPosition, triangles, focalLength, 0, HEIGHT);
+	t1.join();
+
+	for (size_t y = 0; y < HEIGHT; y++) {
+		for (size_t x = 0; x < WIDTH; x++) {
+			int index = closestTriangleBuffer[y][x];
+			if (index > -1) {
+				ModelTriangle triangle = triangles[index];
 				uint32_t colour = (255 << 24) + (int(triangle.colour.red) << 16) + (int(triangle.colour.green) << 8) + int(triangle.colour.blue);
 				window.setPixelColour(x, y, colour);
 			}
 		}
 	}
 }
+
 
 // REFERENCE: http://www.cs.nott.ac.uk/~pszqiu/Teaching/Courses/G5BAGR/Slides/4-transform.pdf
 void handleEvent(SDL_Event event, DrawingWindow &window, glm::mat4 &cameraPosition, bool& toOrbit) {
