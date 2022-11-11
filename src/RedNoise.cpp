@@ -26,6 +26,30 @@
 const float DIST = float(0.1);
 const float ANGLE = float((1.0 / 360.0) * (2 * M_PI));
 
+std::mutex mtx; // Used for raytracing
+
+// Week 2 - Task 4 
+std::vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, int numberOfValues) {
+	std::vector<glm::vec3> result;
+	float xDiff = to.x - from.x;
+	float yDiff = to.y - from.y;
+	float zDiff = to.z - from.z;
+
+	float xIncrement = xDiff / numberOfValues;
+	float yIncrement = yDiff / numberOfValues;
+	float zIncrement = zDiff / numberOfValues;
+
+	for (float i = 0; i < numberOfValues; i++) {
+		float x = from.x + float(xIncrement * i);
+		float y = from.y + float(yIncrement * i);
+		float z = from.z + float(zIncrement * i);
+		result.push_back(glm::vec3(x, y, z));
+	}
+	result.shrink_to_fit();
+
+	return result;
+}
+
 // Week 3 - Task 4
 // Interpolate - for rasterising
 std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint to, float numberOfValues) {
@@ -381,12 +405,13 @@ void drawRasterisedScene(DrawingWindow& window, std::vector<CanvasTriangle> tria
 
 // =================================================== RAY TRACING ======================================================== //
 // Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
-RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
-	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+RayTriangleIntersection getClosestIntersection(glm::vec3 point, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
+
+	// point refers to either camera or point on triangle, depending on which function is using this function
 
 	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
 	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
-	glm::vec3 SPVector = cameraPosVec3 - triangle.vertices[0];
+	glm::vec3 SPVector = point - triangle.vertices[0];
 	glm::mat3 DEMatrix(-rayDirection, e0, e1);
 
 	// possibleSolution = (t,u,v) where
@@ -411,9 +436,110 @@ RayTriangleIntersection getClosestIntersection(glm::mat4 cameraPosition, ModelTr
 
 // ==================================== DRAW ======================================= //
 
-std::mutex mtx;
+std::vector<glm::vec3> getPointsOnModelTriangle(ModelTriangle triangle) {
+	// Split triangle into two flat-bottom triangles
+	if (triangle.vertices[0].y > triangle.vertices[2].y) std::swap(triangle.vertices[0], triangle.vertices[2]);
+	if (triangle.vertices[0].y > triangle.vertices[1].y) std::swap(triangle.vertices[0], triangle.vertices[1]);
+	if (triangle.vertices[1].y > triangle.vertices[2].y) std::swap(triangle.vertices[1], triangle.vertices[2]);
 
-// no idea what to name this that would also be applicable to shadows, so it's called fireRays :D. RayGun is camera/light
+	glm::vec3 top = triangle.vertices[0];
+	glm::vec3 mid = triangle.vertices[1];
+	glm::vec3 bot = triangle.vertices[2];
+
+	// Get barrier; barrier = line that splits 2 triangles
+	float midLength = mid.y - top.y;
+	float ratioX = (bot.x - top.x) / (bot.y - top.y);
+	float ratioZ = (bot.z - top.z) / (bot.y - top.y);
+	float barrierEndX = top.x + (midLength * ratioX);
+	float barrierEndZ = top.z + (midLength * ratioZ);
+	glm::vec3 barrierStart = glm::vec3(mid.x, mid.y, mid.z);
+	glm::vec3 barrierEnd = glm::vec3(barrierEndX, mid.y, barrierEndZ);
+
+	// Interpolate between the vertices
+	// Top triangle
+	float numberOfValuesA = (mid.y - top.y) * 100;
+	std::vector<glm::vec3> pointsAToC = interpolateThreeElementValues(top, barrierStart, numberOfValuesA);
+	std::vector<glm::vec3> pointsAToD = interpolateThreeElementValues(top, barrierEnd, numberOfValuesA);
+	std::vector<glm::vec3> points;
+	for (int i = 0; i < pointsAToC.size(); i++) {
+		glm::vec3 to = pointsAToD[i];
+		glm::vec3 from = pointsAToC[i];
+		float xDiff = to.x - from.x;
+		float yDiff = to.y - from.y;
+		float zDiff = to.z - from.z;
+		float numberOfValues = std::max(abs(xDiff), abs(yDiff));
+		numberOfValues = std::max(numberOfValues, abs(zDiff)) * 100;
+		std::vector<glm::vec3> line = interpolateThreeElementValues(from, to, numberOfValues);
+		for (glm::vec3 point : line) points.push_back(point);
+	}
+
+	// Bottom triangle
+	float numberOfValuesB = (bot.y - mid.y) * 100;
+	std::vector<glm::vec3> pointsBToC = interpolateThreeElementValues(bot, barrierStart, numberOfValuesB);
+	std::vector<glm::vec3> pointsBToD = interpolateThreeElementValues(bot, barrierEnd, numberOfValuesB);
+	std::vector<glm::vec3> botHalf;
+	for (int i = 0; i < pointsBToC.size(); i++) {
+		glm::vec3 to = pointsBToD[i];
+		glm::vec3 from = pointsBToC[i];
+		float xDiff = to.x - from.x;
+		float yDiff = to.y - from.y;
+		float zDiff = to.z - from.z;
+		float numberOfValues = std::max(abs(xDiff), abs(yDiff));
+		numberOfValues = std::max(numberOfValues, abs(zDiff)) * 100;
+		std::vector<glm::vec3> line = interpolateThreeElementValues(from, to, numberOfValues);
+		for (glm::vec3 point : line) points.push_back(point);
+	}
+
+	points.shrink_to_fit();
+	return points;
+}
+
+void lightFireRays(DrawingWindow& window,
+	glm::mat4 cameraPosition,
+	glm::mat4 lightPosition,
+	std::vector<ModelTriangle> triangles,
+	float focalLength) {
+
+	// surface to the light, if blocked, it has shadow
+	// to do this, do two for loops, so for each triangle, check with every other triangle to see if there is an intersection
+	// if there is, then that point on the triangle has a shadow
+
+	// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
+	for (int i = 0; i < triangles.size(); i++) {
+		ModelTriangle triangle = triangles[i];
+
+		std::vector<glm::vec3> points = getPointsOnModelTriangle(triangle);
+		for (glm::vec3 point : points) {
+			// Check if the shadow ray passes any triangle
+			RayTriangleIntersection closestRayTriangleIntersection = RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
+
+			// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
+			for (int j = 0; j < triangles.size(); j++) {
+				ModelTriangle triangleCompare = triangles[j];
+				glm::vec3 lightPosVec3 = glm::vec3(lightPosition[3][0], lightPosition[3][1], lightPosition[3][2]);
+				glm::mat3 lightOrientMat3 = glm::mat3(
+					lightPosition[0][0], lightPosition[0][1], lightPosition[0][2],
+					lightPosition[1][0], lightPosition[1][1], lightPosition[1][2],
+					lightPosition[2][0], lightPosition[2][1], lightPosition[2][2]
+				);
+				glm::vec3 shadowRay = lightOrientMat3 * (lightPosVec3 - point); // to - from, to=light, from=surface of triangle
+
+				// todo: change getClosestIntersection to account for things in between, i.e. triangleCompare. Not too sure it does that rn
+				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(point, triangleCompare, shadowRay, j);
+
+				// check if there is an intersection
+				if (rayTriangleIntersection.triangleIndex >= 0 && rayTriangleIntersection.triangleIndex != i) {
+					// TODO: dont rasterise?
+					// calculate 2d pixels and set to black
+					CanvasPoint canvasPoint = getCanvasIntersectionPoint(cameraPosition, point, focalLength);
+					uint32_t colour = (255 << 24) + (int(0) << 16) + (int(0) << 8) + int(0);
+					window.setPixelColour(floor(canvasPoint.x), ceil(canvasPoint.y), colour);
+				}
+			}
+		}
+	}
+}
+
 void cameraFireRays(std::vector<std::vector<int>>& closestTriangleBuffer,
 	glm::mat4 cameraPosition,
 	std::vector<ModelTriangle> triangles,
@@ -424,7 +550,7 @@ void cameraFireRays(std::vector<std::vector<int>>& closestTriangleBuffer,
 	for (size_t y = startY; y < endY; y++) {
 		for (size_t x = 0; x < WIDTH; x++) {
 			int index = 0;
-			RayTriangleIntersection closestRayTriangleIntersection = RayTriangleIntersection(glm::vec3(), 10000, ModelTriangle(), -1);
+			RayTriangleIntersection closestRayTriangleIntersection = RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
 
 			// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
 			for (ModelTriangle triangle : triangles) {
@@ -433,8 +559,7 @@ void cameraFireRays(std::vector<std::vector<int>>& closestTriangleBuffer,
 
 				float x_3d = ((rayDirectionOriented.x - (WIDTH / 2)) * -rayDirectionOriented.z) / (focalLength * SCALE);
 				float y_3d = ((rayDirectionOriented.y - (HEIGHT / 2)) * rayDirectionOriented.z) / (focalLength * SCALE);
-				float z_3d = rayDirectionOriented.z; // apparently z doesn't particularly matter
-
+				float z_3d = rayDirectionOriented.z;
 
 				glm::mat3 cameraOrientMat3 = glm::mat3(
 					cameraPosition[0][0], cameraPosition[0][1], cameraPosition[0][2],
@@ -443,7 +568,7 @@ void cameraFireRays(std::vector<std::vector<int>>& closestTriangleBuffer,
 				);
 				glm::vec3 rayDirection = cameraOrientMat3 * glm::vec3(x_3d, y_3d, z_3d);
 
-				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosition, triangle, rayDirection, index);
+				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosVec3, triangle, rayDirection, index);
 
 				// check if point on triangle is closer to camera than the previously stored one
 				if (rayTriangleIntersection.distanceFromCamera < closestRayTriangleIntersection.distanceFromCamera) {
@@ -453,7 +578,6 @@ void cameraFireRays(std::vector<std::vector<int>>& closestTriangleBuffer,
 				index++;
 			}
 
-			// TODO: make this drawing bit in the main thread, have calculations in threads
 			// Draw point if the ray hit something
 			if (closestRayTriangleIntersection.triangleIndex >= 0) {
 				mtx.lock();
@@ -501,6 +625,20 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 			}
 		}
 	}
+
+	// Add shadows
+	glm::mat4 lightPosition = glm::mat4(
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0.9, 0, 1 // right-most column vector for x,y,z
+	);
+	lightFireRays(window, cameraPosition, lightPosition, triangles, focalLength);
+
+	// Temp: Draw dot for light
+	CanvasPoint canvasPoint = getCanvasIntersectionPoint(cameraPosition, glm::vec3(0,0.9,0), focalLength);
+	uint32_t colour = (255 << 24) + (int(255) << 16) + (int(0) << 8) + int(0);
+	window.setPixelColour(floor(canvasPoint.x), ceil(canvasPoint.y), colour);
 }
 
 
@@ -555,7 +693,7 @@ int main(int argc, char *argv[]) {
 		0, 0, 4, 1 // last column vector stores x, y, z
 	);
 	float focalLength = 2.0;
-	bool toOrbit = true;
+	bool toOrbit = false;
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
