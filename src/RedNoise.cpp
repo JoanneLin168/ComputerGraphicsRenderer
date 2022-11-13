@@ -167,7 +167,7 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
 	float x_2d = (focalLength * SCALE * (distanceFromCamera.x / -distanceFromCamera.z)) + (WIDTH / 2);
 	float y_2d = (focalLength * SCALE * (distanceFromCamera.y / distanceFromCamera.z)) + (HEIGHT / 2);
-	float z_2d = -(distanceFromCamera.z - focalLength);
+	float z_2d = -1/(distanceFromCamera.z - focalLength);
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
@@ -228,7 +228,7 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
 
 		// If the distance is closer to the screen (1/z bigger than value in depthArray[y][x]) then draw pixel
-		float depthInverse = 1 / z; // negative was changed in getCanvasIntersectionPoint()
+		float depthInverse = z; // 1/-depth was done in getCanvasIntersectionPoint()
 		if (ceil(y) >=0 && ceil(y) < HEIGHT && floor(x) >= 0 && floor(x) < WIDTH) {
 			if (depthInverse > depthArray[ceil(y)][floor(x)]) {
 				depthArray[(size_t)ceil(y)][(size_t)floor(x)] = depthInverse;
@@ -465,7 +465,6 @@ bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, gl
 		glm::vec3 shadowRay = lightOrientMat3 * (lightPosVec3 - point); // to - from, to=light, from=surface of triangle
 
 		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(false, point, triangleCompare, shadowRay, j);
-		float distPointToLight = glm::length(lightPosVec3 - point);
 
 		// check if there is an intersection with a triangle - no idea why it works if distance < 1
 		if (rayTriangleIntersection.distanceFromCamera < 1 && rayTriangleIntersection.triangleIndex != index) {
@@ -523,7 +522,17 @@ void cameraFireRays(std::vector<std::vector<RayTriangleIntersection>>& closestTr
 	}
 }
 
-void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+float calculateBrightness(glm::mat4 lightPosition, glm::vec3 point, float s) { // s = source strength
+	// equation: 1/4*r^2
+	glm::vec3 lightPosVec3 = glm::vec3(lightPosition[3][0], lightPosition[3][1], lightPosition[3][2]);
+	float r = glm::length(point - lightPosVec3); // distnce from source (think of it as radius)
+	float brightness = s / (4 * M_PI * pow(r, 2));
+	if (brightness < 0) brightness = 0;
+	if (brightness > 1) brightness = 1;
+	return brightness;
+}
+
+void drawRayTracingScene(DrawingWindow& window, glm::mat4& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
 	window.clearPixels();
 
 	std::vector<std::vector<RayTriangleIntersection>> closestTriangleBuffer(HEIGHT, std::vector<RayTriangleIntersection>(WIDTH, RayTriangleIntersection())); // similar to depthArray, but stores index of closest triangle
@@ -557,18 +566,14 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 			ModelTriangle triangle = rayTriangleIntersection.intersectedTriangle;
 			glm::vec3 point = rayTriangleIntersection.intersectionPoint;
 
-			// Light needs to be slightly less than 1 or else it will always pass the triangle for the light
 			// Add shadows
-			glm::mat4 lightPosition = glm::mat4(
-				1, 0, 0, 0,
-				0, 1, 0, 0,
-				0, 0, 1, 0,
-				0, 0.9, 0, 1 // right-most column vector for x,y,z
-			);
-
 			bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, triangles, focalLength);
 			if (index != -1 && !shadowRayBlocked) {
-				uint32_t colour = (255 << 24) + (int(triangle.colour.red) << 16) + (int(triangle.colour.green) << 8) + int(triangle.colour.blue);
+				float brightness = calculateBrightness(lightPosition, point, 5);
+				float r = triangle.colour.red * brightness;
+				float g = triangle.colour.green * brightness;
+				float b = triangle.colour.blue * brightness;
+				uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
 				window.setPixelColour(floor(x), ceil(y), colour);
 			}
 		}
@@ -582,7 +587,7 @@ void changeMode(int& mode) {
 }
 
 // REFERENCE: http://www.cs.nott.ac.uk/~pszqiu/Teaching/Courses/G5BAGR/Slides/4-transform.pdf
-void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::mat4 &cameraPosition, bool& toOrbit) {
+void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::mat4& lightPosition, glm::mat4 &cameraPosition, bool& toOrbit) {
 	if (event.type == SDL_KEYDOWN) {
 		// Translation
 		if (event.key.keysym.sym == SDLK_d) translateCamera("X", DIST, cameraPosition);
@@ -599,6 +604,10 @@ void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::mat4 &c
 		else if (event.key.keysym.sym == SDLK_k) rotateCamera("Y", -ANGLE, cameraPosition);
 		else if (event.key.keysym.sym == SDLK_u) rotateCamera("Z", ANGLE, cameraPosition);
 		else if (event.key.keysym.sym == SDLK_o) rotateCamera("Z", -ANGLE, cameraPosition);
+
+		// Move light
+		else if (event.key.keysym.sym == SDLK_UP) lightPosition[3][1] += 0.01;
+		else if (event.key.keysym.sym == SDLK_DOWN) lightPosition[3][1] -= 0.01;
 
 		// Switch between modes
 		else if (event.key.keysym.sym == SDLK_r) changeMode(mode);
@@ -645,13 +654,21 @@ int main(int argc, char *argv[]) {
 	bool toOrbit = false;
 	int mode = 0;
 
+	// Light needs to be slightly less than 1 or else it will always pass the triangle for the light
+	glm::mat4 lightPosition = glm::mat4(
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0.5, 0, 1 // right-most column vector for x,y,z
+	);
+
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
-		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, cameraPosition, toOrbit);
+		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, lightPosition, cameraPosition, toOrbit);
 
 		if (mode == 0) drawWireframe(window, cameraPosition, focalLength, modelTriangles);
 		else if (mode == 1) drawRasterisedScene(window, cameraPosition, focalLength, modelTriangles, coloursMap, colourNames);
-		else if (mode == 2) drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
+		else if (mode == 2) drawRayTracingScene(window, lightPosition, cameraPosition, modelTriangles, focalLength);
 
 		// Orbit and LookAt
 		if (toOrbit) rotateCamera("Y", ANGLE, cameraPosition);
