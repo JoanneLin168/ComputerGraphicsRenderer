@@ -423,7 +423,7 @@ void drawRasterisedScene(DrawingWindow& window, glm::mat4& cameraPosition, float
 
 // =================================================== RAY TRACING ======================================================== //
 // Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
-RayTriangleIntersection getClosestIntersection(glm::vec3 point, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
+RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 point, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
 
 	// point refers to either camera or point on triangle, depending on which function is using this function
 
@@ -438,7 +438,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 point, ModelTriangle tr
 	//    v = proportional distance along second edge
 	glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;
 
-	float t = possibleSolution[0];
+	float t = getAbsolute ? abs(possibleSolution[0]) : possibleSolution[0];
 	float u = possibleSolution[1];
 	float v = possibleSolution[2];
 	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (double(u) + double(v)) <= 1.0 && t >= 0) {
@@ -453,11 +453,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 point, ModelTriangle tr
 // ==================================== DRAW ======================================= //
 
 bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, glm::mat4 lightPosition, std::vector<ModelTriangle> triangles, float focalLength) {
-	// surface to the light, if blocked, it has shadow
-	// to do this, do two for loops, so for each triangle, check with every other triangle to see if there is an intersection
-	// if there is, then that point on the triangle has a shadow
-
-	// For every pixel, check to see which triangles are intersected by the ray, and find the closest one
+	// If shadow ray hits a triangle, then you need to draw a shadow
 	for (int j = 0; j < triangles.size(); j++) {
 		ModelTriangle triangleCompare = triangles[j];
 		glm::vec3 lightPosVec3 = glm::vec3(lightPosition[3][0], lightPosition[3][1], lightPosition[3][2]);
@@ -468,7 +464,8 @@ bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, gl
 		);
 		glm::vec3 shadowRay = lightOrientMat3 * (lightPosVec3 - point); // to - from, to=light, from=surface of triangle
 
-		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(point, triangleCompare, shadowRay, j);
+		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(false, point, triangleCompare, shadowRay, j);
+		float distPointToLight = glm::length(lightPosVec3 - point);
 
 		// check if there is an intersection with a triangle - no idea why it works if distance < 1
 		if (rayTriangleIntersection.distanceFromCamera < 1 && rayTriangleIntersection.triangleIndex != index) {
@@ -506,7 +503,7 @@ void cameraFireRays(std::vector<std::vector<RayTriangleIntersection>>& closestTr
 				);
 				glm::vec3 rayDirection = cameraOrientMat3 * glm::vec3(x_3d, y_3d, z_3d);
 
-				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(cameraPosVec3, triangle, rayDirection, index);
+				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(true, cameraPosVec3, triangle, rayDirection, index);
 
 				// check if point on triangle is closer to camera than the previously stored one
 				if (rayTriangleIntersection.distanceFromCamera < closestRayTriangleIntersection.distanceFromCamera) {
@@ -572,15 +569,10 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 			bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, triangles, focalLength);
 			if (index != -1 && !shadowRayBlocked) {
 				uint32_t colour = (255 << 24) + (int(triangle.colour.red) << 16) + (int(triangle.colour.green) << 8) + int(triangle.colour.blue);
-				window.setPixelColour(x, y, colour);
+				window.setPixelColour(floor(x), ceil(y), colour);
 			}
 		}
 	}
-
-	// Temp: Draw dot for light
-	CanvasPoint canvasPoint = getCanvasIntersectionPoint(cameraPosition, glm::vec3(0,0.9,0), focalLength);
-	uint32_t colour = (255 << 24) + (int(255) << 16) + (int(0) << 8) + int(0);
-	window.setPixelColour(floor(canvasPoint.x), ceil(canvasPoint.y), colour);
 }
 
 void changeMode(int& mode) {
@@ -613,6 +605,12 @@ void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::mat4 &c
 
 		// Toggle orbit
 		else if (event.key.keysym.sym == SDLK_SPACE) toOrbit = !toOrbit;
+
+		// Debug key
+		else if (event.key.keysym.sym == SDLK_0) {
+			glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+			std::cout << cameraPosVec3.x << " " << cameraPosVec3.y << " " << cameraPosVec3.z << std::endl;
+		}
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
 		window.saveBMP("output.bmp");
@@ -656,10 +654,7 @@ int main(int argc, char *argv[]) {
 		else if (mode == 2) drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
 
 		// Orbit and LookAt
-		if (toOrbit) {
-			rotateCamera("Y", ANGLE, cameraPosition);
-		}
-
+		if (toOrbit) rotateCamera("Y", ANGLE, cameraPosition);
 		lookAt(cameraPosition);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
