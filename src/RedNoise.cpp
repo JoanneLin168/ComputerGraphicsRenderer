@@ -167,7 +167,7 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
 	float x_2d = (focalLength * SCALE * (distanceFromCamera.x / -distanceFromCamera.z)) + (WIDTH / 2);
 	float y_2d = (focalLength * SCALE * (distanceFromCamera.y / distanceFromCamera.z)) + (HEIGHT / 2);
-	float z_2d = -(distanceFromCamera.z);
+	float z_2d = -(distanceFromCamera.z - focalLength);
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
@@ -389,15 +389,33 @@ void lookAt(glm::mat4& cameraPosition) {
 
 }
 
-// Week 4 - Task 9
-void drawRasterisedScene(DrawingWindow& window, std::vector<CanvasTriangle> triangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+// ================================================== Wireframe ============================================================= //
+void drawWireframe(DrawingWindow& window, glm::mat4& cameraPosition, float focalLength, std::vector<ModelTriangle> modelTriangles) {
 	window.clearPixels();
+
+	std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
 
 	// Create a depth array
 	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
 
-	for (size_t i = 0; i < triangles.size(); i++) {
-		CanvasTriangle triangle = triangles[i];
+	for (size_t i = 0; i < canvasTriangles.size(); i++) {
+		CanvasTriangle triangle = canvasTriangles[i];
+		Colour colour = Colour(255, 255, 255);
+		drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour, depthArray);
+	}
+}
+
+// Week 4 - Task 9
+void drawRasterisedScene(DrawingWindow& window, glm::mat4& cameraPosition, float focalLength, std::vector<ModelTriangle> modelTriangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+	window.clearPixels();
+
+	std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
+
+	// Create a depth array
+	std::vector<std::vector<float>> depthArray(HEIGHT, std::vector<float>(WIDTH, 0));
+
+	for (size_t i = 0; i < canvasTriangles.size(); i++) {
+		CanvasTriangle triangle = canvasTriangles[i];
 		Colour colour = coloursMap[colourNames[i]];
 		drawFilledTriangle(window, triangle, colour, depthArray);
 	}
@@ -451,9 +469,8 @@ bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, gl
 		glm::vec3 shadowRay = lightOrientMat3 * (lightPosVec3 - point); // to - from, to=light, from=surface of triangle
 
 		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(point, triangleCompare, shadowRay, j);
-		float distPointToLight = glm::length(lightPosVec3 - point);
 
-		// check if there is an intersection with a triangle
+		// check if there is an intersection with a triangle - no idea why it works if distance < 1
 		if (rayTriangleIntersection.distanceFromCamera < 1 && rayTriangleIntersection.triangleIndex != index) {
 			return true;
 		}
@@ -566,9 +583,14 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& cameraPosition, std::
 	window.setPixelColour(floor(canvasPoint.x), ceil(canvasPoint.y), colour);
 }
 
+void changeMode(int& mode) {
+	std::cout << "Switching mode: " << mode + 1 << std::endl;
+	if (mode < 2) mode++;
+	else mode = 0;
+}
 
 // REFERENCE: http://www.cs.nott.ac.uk/~pszqiu/Teaching/Courses/G5BAGR/Slides/4-transform.pdf
-void handleEvent(SDL_Event event, DrawingWindow &window, glm::mat4 &cameraPosition, bool& toOrbit) {
+void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::mat4 &cameraPosition, bool& toOrbit) {
 	if (event.type == SDL_KEYDOWN) {
 		// Translation
 		if (event.key.keysym.sym == SDLK_d) translateCamera("X", DIST, cameraPosition);
@@ -586,6 +608,10 @@ void handleEvent(SDL_Event event, DrawingWindow &window, glm::mat4 &cameraPositi
 		else if (event.key.keysym.sym == SDLK_u) rotateCamera("Z", ANGLE, cameraPosition);
 		else if (event.key.keysym.sym == SDLK_o) rotateCamera("Z", -ANGLE, cameraPosition);
 
+		// Switch between modes
+		else if (event.key.keysym.sym == SDLK_r) changeMode(mode);
+
+		// Toggle orbit
 		else if (event.key.keysym.sym == SDLK_SPACE) toOrbit = !toOrbit;
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
@@ -619,19 +645,15 @@ int main(int argc, char *argv[]) {
 	);
 	float focalLength = 2.0;
 	bool toOrbit = false;
+	int mode = 0;
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
-		if (window.pollForInputEvents(event)) handleEvent(event, window, cameraPosition, toOrbit);
+		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, cameraPosition, toOrbit);
 
-		// Get triangles
-		//std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
-
-		// Rasterise
-		//drawRasterisedScene(window, canvasTriangles, coloursMap, colourNames);
-		
-		// Raytracing
-		drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
+		if (mode == 0) drawWireframe(window, cameraPosition, focalLength, modelTriangles);
+		else if (mode == 1) drawRasterisedScene(window, cameraPosition, focalLength, modelTriangles, coloursMap, colourNames);
+		else if (mode == 2) drawRayTracingScene(window, cameraPosition, modelTriangles, focalLength);
 
 		// Orbit and LookAt
 		if (toOrbit) {
