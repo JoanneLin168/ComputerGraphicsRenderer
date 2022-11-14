@@ -187,6 +187,10 @@ std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertice
 		int zIndex = facet.z;*/
 		Colour colour = coloursMap[colourNames[i]];
 		ModelTriangle triangle_3d = ModelTriangle(vertices[facet.x], vertices[facet.y], vertices[facet.z], colour);
+
+		// Week 8 - Task 3: Calculate normals of every model triangle
+		glm::vec3 normal = glm::normalize(glm::cross((triangle_3d.vertices[1] - triangle_3d.vertices[0]), (triangle_3d.vertices[2] - triangle_3d.vertices[0])));
+		triangle_3d.normal = normal;
 		results.push_back(triangle_3d);
 	}
 	results.shrink_to_fit();
@@ -405,6 +409,8 @@ void drawWireframe(DrawingWindow& window, glm::mat4& cameraPosition, float focal
 	}
 }
 
+// ================================================== Rasterised ============================================================= //
+
 // Week 4 - Task 9
 void drawRasterisedScene(DrawingWindow& window, glm::mat4& cameraPosition, float focalLength, std::vector<ModelTriangle> modelTriangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
 	window.clearPixels();
@@ -452,21 +458,16 @@ RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 point
 
 // ==================================== DRAW ======================================= //
 
-bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, glm::mat4 lightPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, glm::vec3 lightPosition, std::vector<ModelTriangle> triangles, float focalLength) {
 	// If shadow ray hits a triangle, then you need to draw a shadow
 	for (int j = 0; j < triangles.size(); j++) {
 		ModelTriangle triangleCompare = triangles[j];
-		glm::vec3 lightPosVec3 = glm::vec3(lightPosition[3][0], lightPosition[3][1], lightPosition[3][2]);
-		glm::mat3 lightOrientMat3 = glm::mat3(
-			lightPosition[0][0], lightPosition[0][1], lightPosition[0][2],
-			lightPosition[1][0], lightPosition[1][1], lightPosition[1][2],
-			lightPosition[2][0], lightPosition[2][1], lightPosition[2][2]
-		);
-		glm::vec3 shadowRay = lightOrientMat3 * (lightPosVec3 - point); // to - from, to=light, from=surface of triangle
+		glm::vec3 shadowRay = lightPosition - point; // to - from, to=light, from=surface of triangle
 
 		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(false, point, triangleCompare, shadowRay, j);
 
-		// check if there is an intersection with a triangle - no idea why it works if distance < 1
+		//float pointToLight = glm::length(lightPosition - point);
+		// check if there is an intersection with a triangle - no idea why it works if distance < 1 and not with pointToLight
 		if (rayTriangleIntersection.distanceFromCamera < 1 && rayTriangleIntersection.triangleIndex != index) {
 			return true;
 		}
@@ -522,17 +523,31 @@ void cameraFireRays(std::vector<std::vector<RayTriangleIntersection>>& closestTr
 	}
 }
 
-float calculateBrightness(glm::mat4 lightPosition, glm::vec3 point, float s) { // s = source strength
+float calculateBrightness(glm::vec3 lightPosition, glm::vec3 point, float s) { // s = source strength
 	// equation: 1/4*r^2
-	glm::vec3 lightPosVec3 = glm::vec3(lightPosition[3][0], lightPosition[3][1], lightPosition[3][2]);
-	float r = glm::length(point - lightPosVec3); // distnce from source (think of it as radius)
+	float r = glm::length(point - lightPosition); // distnce from source (think of it as radius)
 	float brightness = s / (4 * M_PI * pow(r, 2));
-	if (brightness < 0) brightness = 0;
-	if (brightness > 1) brightness = 1;
+	brightness = std::min(float(1.0), brightness);
+	brightness = std::max(float(0.0), brightness);
 	return brightness;
 }
 
-void drawRayTracingScene(DrawingWindow& window, glm::mat4& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+float calculateDPAngleOfIncidence(glm::vec3 shadowRay, glm::vec3 normal) {
+	float dot = glm::dot(normal, normalize(shadowRay));
+	dot = std::min(float(1.0), dot);
+	dot = std::max(float(0.0), dot);
+	return dot;
+}
+
+float calculateDPViewReflection(glm::vec3 view, glm::vec3 incidentRay, glm::vec3 normal, float power) {
+	glm::vec3 reflectedRay = incidentRay - 2 * glm::dot(normal, glm::normalize(incidentRay)) * normal;
+	float dot = glm::dot(glm::normalize(view), glm::normalize(reflectedRay));
+	dot = std::min(float(1.0), dot);
+	dot = std::max(float(0.0), dot);
+	return pow(dot, power);
+}
+
+void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
 	window.clearPixels();
 
 	std::vector<std::vector<RayTriangleIntersection>> closestTriangleBuffer(HEIGHT, std::vector<RayTriangleIntersection>(WIDTH, RayTriangleIntersection())); // similar to depthArray, but stores index of closest triangle
@@ -568,11 +583,27 @@ void drawRayTracingScene(DrawingWindow& window, glm::mat4& lightPosition, glm::m
 
 			// Add shadows
 			bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, triangles, focalLength);
-			if (index != -1 && !shadowRayBlocked) {
-				float brightness = calculateBrightness(lightPosition, point, 5);
-				float r = triangle.colour.red * brightness;
-				float g = triangle.colour.green * brightness;
-				float b = triangle.colour.blue * brightness;
+			if (index != -1) {
+				// Ambience
+				float ambience = (!shadowRayBlocked) ? 50 : 0;
+
+				// Brightness
+				float brightness = calculateBrightness(lightPosition, point, 10);
+
+				// Dot product of angle of incidence
+				glm::vec3 shadowRay = lightPosition - point;
+				float dotIncidence = calculateDPAngleOfIncidence(shadowRay, triangle.normal);
+
+				// Dot product of view vector and reflection vector
+				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+				glm::vec3 view = point - cameraPosVec3;
+				glm::vec3 lightRay = -shadowRay;
+				float dotViewReflection = calculateDPViewReflection(view, lightRay, triangle.normal, 256);
+
+				float r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * (brightness + dotIncidence + dotViewReflection)/3));
+				float g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * (brightness + dotIncidence + dotViewReflection)/3));
+				float b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * (brightness + dotIncidence + dotViewReflection)/3));
+
 				uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
 				window.setPixelColour(floor(x), ceil(y), colour);
 			}
@@ -587,7 +618,7 @@ void changeMode(int& mode) {
 }
 
 // REFERENCE: http://www.cs.nott.ac.uk/~pszqiu/Teaching/Courses/G5BAGR/Slides/4-transform.pdf
-void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::mat4& lightPosition, glm::mat4 &cameraPosition, bool& toOrbit) {
+void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& lightPosition, glm::mat4 &cameraPosition, bool& toOrbit) {
 	if (event.type == SDL_KEYDOWN) {
 		// Translation
 		if (event.key.keysym.sym == SDLK_d) translateCamera("X", DIST, cameraPosition);
@@ -606,8 +637,10 @@ void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::mat4& l
 		else if (event.key.keysym.sym == SDLK_o) rotateCamera("Z", -ANGLE, cameraPosition);
 
 		// Move light
-		else if (event.key.keysym.sym == SDLK_UP) lightPosition[3][1] += 0.01;
-		else if (event.key.keysym.sym == SDLK_DOWN) lightPosition[3][1] -= 0.01;
+		else if (event.key.keysym.sym == SDLK_UP) lightPosition[1] += 0.01;
+		else if (event.key.keysym.sym == SDLK_DOWN) lightPosition[1] -= 0.01;
+		else if (event.key.keysym.sym == SDLK_RIGHT) lightPosition[2] += 0.01;
+		else if (event.key.keysym.sym == SDLK_LEFT) lightPosition[2] -= 0.01;
 
 		// Switch between modes
 		else if (event.key.keysym.sym == SDLK_r) changeMode(mode);
@@ -655,12 +688,7 @@ int main(int argc, char *argv[]) {
 	int mode = 0;
 
 	// Light needs to be slightly less than 1 or else it will always pass the triangle for the light
-	glm::mat4 lightPosition = glm::mat4(
-		1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		0, 0.5, 0, 1 // right-most column vector for x,y,z
-	);
+	glm::vec3 lightPosition = glm::vec3(0, 0.9, 0.0);
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
