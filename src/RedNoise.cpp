@@ -167,7 +167,7 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	// Equations on website - W/2 and H/2 are shifts to centre the projection to the centre of the screen
 	float x_2d = (focalLength * SCALE * (distanceFromCamera.x / -distanceFromCamera.z)) + (WIDTH / 2);
 	float y_2d = (focalLength * SCALE * (distanceFromCamera.y / distanceFromCamera.z)) + (HEIGHT / 2);
-	float z_2d = -1/(distanceFromCamera.z - focalLength);
+	float z_2d = -1/(distanceFromCamera.z);
 
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
@@ -705,7 +705,7 @@ int main(int argc, char *argv[]) {
 
 		// Orbit and LookAt
 		if (toOrbit) rotateCamera("Y", ANGLE, cameraPosition);
-		lookAt(cameraPosition);
+		//lookAt(cameraPosition);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
