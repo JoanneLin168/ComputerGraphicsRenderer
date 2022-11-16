@@ -523,7 +523,7 @@ void cameraFireRays(std::vector<std::vector<RayTriangleIntersection>>& closestTr
 	}
 }
 
-float calculateBrightness(glm::vec3 lightPosition, glm::vec3 point, float s) { // s = source strength
+float calculateProximityLighting(glm::vec3 lightPosition, glm::vec3 point, float s) { // s = source strength
 	// equation: 1/4*r^2
 	float r = glm::length(point - lightPosition); // distnce from source (think of it as radius)
 	float brightness = s / (4 * M_PI * pow(r, 2));
@@ -539,12 +539,11 @@ float calculateDPAngleOfIncidence(glm::vec3 shadowRay, glm::vec3 normal) {
 	return dot;
 }
 
-float calculateDPViewReflection(glm::vec3 view, glm::vec3 incidentRay, glm::vec3 normal, float power) {
-	glm::vec3 reflectedRay = incidentRay - 2 * glm::dot(normal, glm::normalize(incidentRay)) * normal;
-	float dot = glm::dot(glm::normalize(view), glm::normalize(reflectedRay));
-	dot = std::min(float(1.0), dot);
-	dot = std::max(float(0.0), dot);
-	return pow(dot, power);
+float calculateSpecularExponent(glm::vec3 view, glm::vec3 incidentRay, glm::vec3 normal, float power) {
+	float dot = glm::dot(glm::normalize(incidentRay), normal);
+	glm::vec3 reflectedRay = incidentRay - (normal*2.0f) * dot;
+	float result = glm::dot(glm::normalize(view), glm::normalize(reflectedRay));
+	return pow(result, power);
 }
 
 void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
@@ -588,7 +587,7 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 				float ambience = (!shadowRayBlocked) ? 50 : 0;
 
 				// Brightness
-				float brightness = calculateBrightness(lightPosition, point, 10);
+				float proximityLighting = calculateProximityLighting(lightPosition, point, 10);
 
 				// Dot product of angle of incidence
 				glm::vec3 shadowRay = lightPosition - point;
@@ -598,17 +597,23 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 				glm::vec3 view = point - cameraPosVec3;
 				glm::vec3 lightRay = -shadowRay;
-				float dotViewReflection = calculateDPViewReflection(view, lightRay, triangle.normal, 256);
+				float specularExponent = calculateSpecularExponent(view, lightRay, triangle.normal, 128);
 
-				float r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * (brightness + dotIncidence + dotViewReflection)/3));
-				float g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * (brightness + dotIncidence + dotViewReflection)/3));
-				float b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * (brightness + dotIncidence + dotViewReflection)/3));
+				float brightness = proximityLighting * dotIncidence + specularExponent;
+
+				float r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
+				float g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
+				float b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
 
 				uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
 				window.setPixelColour(floor(x), ceil(y), colour);
 			}
 		}
 	}
+	// tmp draw light pos
+	uint32_t colour = (255 << 24) + (int(255) << 16) + (int(125) << 8) + int(0);
+	CanvasPoint light = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
+	window.setPixelColour(floor(light.x), ceil(light.y), colour);
 }
 
 void changeMode(int& mode) {
