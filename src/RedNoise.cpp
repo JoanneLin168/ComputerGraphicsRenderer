@@ -480,7 +480,11 @@ RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 point
 	float v = possibleSolution[2];
 	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (double(u) + double(v)) <= 1.0 && t >= 0) {
 		glm::vec3 r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
-		return RayTriangleIntersection(r, t, triangle, index);
+		RayTriangleIntersection rayTriangleIntersection = RayTriangleIntersection(r, t, triangle, index);
+		rayTriangleIntersection.t = t;
+		rayTriangleIntersection.u = u;
+		rayTriangleIntersection.v = v;
+		return rayTriangleIntersection;
 	}
 	else {
 		return RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
@@ -506,9 +510,10 @@ bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, gl
 	return false;
 }
 
-glm::vec3 getVertexNormal(glm::vec3 vertex, std::vector<ModelTriangle> modelTriangles) {
+glm::vec3 getVertexNormal(std::vector<ModelTriangle> modelTriangles, glm::vec3 vertex) {
 	std::vector<glm::vec3> neighbouringNormals;
 	glm::vec3 neighbouringNormalsSum;
+
 	for (ModelTriangle triangle : modelTriangles) {
 		for (int i = 0; i < triangle.vertices.size(); i++) {
 			if (vertex == triangle.vertices[i]) {
@@ -517,9 +522,11 @@ glm::vec3 getVertexNormal(glm::vec3 vertex, std::vector<ModelTriangle> modelTria
 			}
 		}
 	}
-	neighbouringNormals.shrink_to_fit();
-	glm::vec3 vertexNormal = float(1 / neighbouringNormals.size()) * neighbouringNormalsSum;
 
+	neighbouringNormals.shrink_to_fit();
+	int n = neighbouringNormals.size();
+	glm::vec3 vertexNormal = glm::vec3(neighbouringNormalsSum.x / n, neighbouringNormalsSum.y / n, neighbouringNormalsSum.z / n);
+	
 	return vertexNormal;
 }
 
@@ -594,31 +601,6 @@ float calculateSpecularExponent(glm::vec3 view, glm::vec3 incidentRay, glm::vec3
 	return pow(result, power);
 }
 
-// Get ratios of two subtriangles from two edges of the triangle and the point
-std::tuple<float, float, float> getUVWAreaRatios(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 point) {
-	glm::vec3 edgeA = v1 - v0;
-	glm::vec3 edgeB = v2 - v0;
-	float area = 0.5f * glm::length(glm::cross(edgeA, edgeB));
-
-	// Get areas of subtriangles (triangles formed by points and edgeA and edgeB)
-	// For subtriangle A
-	glm::vec3 edgeA1 = v0 - point;
-	glm::vec3 edgeA2 = v1 - point;
-	float areaA = 0.5f * glm::length(glm::cross(edgeA1, edgeA2));
-
-	// For subtriangle B
-	glm::vec3 edgeB1 = v0 - point;
-	glm::vec3 edgeB2 = v2 - point;
-	float areaB = 0.5f * glm::length(glm::cross(edgeB1, edgeB2));
-
-	// Get u, v and w
-	float u = areaA / area;
-	float v = areaB / area;
-	float w = 1 - (u + v);
-
-	return std::make_tuple(u, v, w);
-}
-
 void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> modelTriangles, float focalLength, ShadingType shadingType) {
 	window.clearPixels();
 
@@ -651,13 +633,21 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 			ModelTriangle triangle = rayTriangleIntersection.intersectedTriangle;
 			glm::vec3 point = rayTriangleIntersection.intersectionPoint; // point that the cameraRay intersected with the triangle
 
+			// Get u,v,w for Gouraud and Phong shading (used for interpolations)
+			// REFERENCE: https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-shading/shading-normals
+			float u = rayTriangleIntersection.u;
+			float v = rayTriangleIntersection.v;
+			float w = 1 - (u + v);
+
 			glm::vec3 v0 = triangle.vertices[0];
 			glm::vec3 v1 = triangle.vertices[1];
 			glm::vec3 v2 = triangle.vertices[2];
 
-			glm::vec3 v0_normal = getVertexNormal(v0, modelTriangles);
-			glm::vec3 v1_normal = getVertexNormal(v1, modelTriangles);
-			glm::vec3 v2_normal = getVertexNormal(v2, modelTriangles);
+			glm::vec3 n0 = getVertexNormal(modelTriangles, v0);
+			glm::vec3 n1 = getVertexNormal(modelTriangles, v1);
+			glm::vec3 n2 = getVertexNormal(modelTriangles, v2);
+
+			glm::vec3 hitNormal = (w * n0) + (u * n1) + (v * n2); // for Phong shading
 
 			// Add lighting and shadows
 			if (index != -1) {
@@ -665,99 +655,80 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 				bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, modelTriangles, focalLength);
 				glm::vec3 shadowRay = lightPosition - point;
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-				glm::vec3 view = point - cameraPosVec3; // vector from the point to the camera
+				glm::vec3 view = cameraPosVec3 - point; // vector to the camera from the point
 				glm::vec3 lightRay = -shadowRay;
+
+				// Lighting setup
+				float proximityLighting = 0;
+				float dotIncidence = 0;
+				float specularExponent = 0;
+				float brightness = 0;
+				float ambience = (!shadowRayBlocked) ? 20 : 0;
 
 				if (shadingType == SHADING_FLAT) {
 					// Lighting
-					float ambience = 50;
-					float proximityLighting = calculateProximityLighting(lightPosition, point, 10);
-					float dotIncidence = calculateDPAngleOfIncidence(shadowRay, triangle.normal);
-					float specularExponent = calculateSpecularExponent(view, lightRay, triangle.normal, 128);
-					float brightness = proximityLighting * dotIncidence + specularExponent;
-
-					float r = float(triangle.colour.red);
-					float g = float(triangle.colour.green);
-					float b = float(triangle.colour.blue);
-
-					if (specularExponent < proximityLighting * dotIncidence) {
-						r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
-						g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
-						b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
-					}
-					else {
-						r = 255 * specularExponent;
-						g = 255 * specularExponent;
-						b = 255 * specularExponent;
-					}
-
-					uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
-					window.setPixelColour(floor(x), ceil(y), colour);
+					proximityLighting = calculateProximityLighting(lightPosition, point, 10);
+					dotIncidence = calculateDPAngleOfIncidence(shadowRay, triangle.normal);
+					specularExponent = calculateSpecularExponent(view, lightRay, triangle.normal, 256);
 				}
 
 				else if (shadingType == SHADING_GOURAUD) {
 					// 1. Get vertex normals by getting average of neighbouring facet normals
 					// 2. Get illumination for each vertex point
 					// 3. Use linear interpolation to apply intensities across polygons
-					std::tuple<float, float, float> uvw = getUVWAreaRatios(v0, v1, v2, point);
-					float u = std::get<0>(uvw);
-					float v = std::get<1>(uvw);
-					float w = std::get<2>(uvw);
+					float proximityLighting0 = calculateProximityLighting(lightPosition, n0, 10);
+					float proximityLighting1 = calculateProximityLighting(lightPosition, n1, 10);
+					float proximityLighting2 = calculateProximityLighting(lightPosition, n2, 10);
+					float dotIncidence0 = calculateDPAngleOfIncidence(shadowRay, n0);
+					float dotIncidence1 = calculateDPAngleOfIncidence(shadowRay, n1);
+					float dotIncidence2 = calculateDPAngleOfIncidence(shadowRay, n2);
+					float specularExponent0 = calculateSpecularExponent(view, lightRay, n0, 256);
+					float specularExponent1 = calculateSpecularExponent(view, lightRay, n1, 256);
+					float specularExponent2 = calculateSpecularExponent(view, lightRay, n2, 256);
 
-					bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, modelTriangles, focalLength);
-					glm::vec3 shadowRay = lightPosition - point;
-					glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-					glm::vec3 view = point - cameraPosVec3; // vector from the point to the camera
-					glm::vec3 lightRay = -shadowRay;
-
-					// Lighting
-					float proximityLighting0 = calculateProximityLighting(lightPosition, point, 5);
-					float proximityLighting1 = calculateProximityLighting(lightPosition, point, 5);
-					float proximityLighting2 = calculateProximityLighting(lightPosition, point, 5);
-					float dotIncidence0      = calculateDPAngleOfIncidence(shadowRay, v0_normal);
-					float dotIncidence1      = calculateDPAngleOfIncidence(shadowRay, v1_normal);
-					float dotIncidence2      = calculateDPAngleOfIncidence(shadowRay, v2_normal);
-					float specularExponent0  = calculateSpecularExponent(view, lightRay, v0_normal, 128);
-					float specularExponent1  = calculateSpecularExponent(view, lightRay, v1_normal, 128);
-					float specularExponent2  = calculateSpecularExponent(view, lightRay, v2_normal, 128);
-
-					float ambience = 50;
-					float proximityLighting = (u * proximityLighting0) + (v * proximityLighting1) + (w * proximityLighting2);
-					float dotIncidence = (u * dotIncidence0) + (v * dotIncidence1) + (w * dotIncidence2);
-					float specularExponent = (u * specularExponent0) + (v * specularExponent1) + (w * specularExponent2);
-					float brightness = proximityLighting * dotIncidence + specularExponent;
-
-					float r = float(triangle.colour.red);
-					float g = float(triangle.colour.green);
-					float b = float(triangle.colour.blue);
-
-					/*if (specularExponent < proximityLighting * dotIncidence) {
-						r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
-						g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
-						b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
-					}
-					else {
-						r = 255 * specularExponent;
-						g = 255 * specularExponent;
-						b = 255 * specularExponent;
-					}*/
-
-					r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
-					g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
-					b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
-
-					uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
-					window.setPixelColour(floor(x), ceil(y), colour);
+					proximityLighting = (w * proximityLighting0) + (u * proximityLighting1) + (v * proximityLighting2);
+					dotIncidence = (w * dotIncidence0) + (u * dotIncidence1) + (v * dotIncidence2);
+					specularExponent = (w * specularExponent0) + (u * specularExponent1) + (v * specularExponent2);
 				}
+
+				else if (shadingType == SHADING_PHONG) {
+					// 1. Get vertex normals by getting average of neighbouring facet normals
+					// 2. Get illumination for each vertex point
+					// 3. Use linear interpolation to get normals for each point
+					proximityLighting = calculateProximityLighting(lightPosition, point, 10);
+					dotIncidence = calculateDPAngleOfIncidence(shadowRay, hitNormal);
+					specularExponent = calculateSpecularExponent(view, lightRay, hitNormal, 256);
+				}
+
+				// Colour in
+				brightness = proximityLighting * dotIncidence;
+				float r = 0;
+				float g = 0;
+				float b = 0;
+				if (triangle.colour.red > 0)   r = ambience + triangle.colour.red * brightness;
+				if (triangle.colour.green > 0) g = ambience + triangle.colour.green * brightness;
+				if (triangle.colour.blue > 0)  b = ambience + triangle.colour.blue * brightness;
+
+				if (dotIncidence > 0) {
+					r += 255 * specularExponent;
+					g += 255 * specularExponent;
+					b += 255 * specularExponent;
+				}
+				r = glm::clamp(r, 0.0f, 255.0f);
+				g = glm::clamp(g, 0.0f, 255.0f);
+				b = glm::clamp(b, 0.0f, 255.0f);
+
+				uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
+				window.setPixelColour(floor(x), ceil(y), colour);
 			}
 		}
 	}
 }
 
 void changeMode(int& mode) {
-	std::cout << "Switching mode: " << mode + 1 << std::endl;
 	if (mode < 2) mode++;
 	else mode = 0;
+	std::cout << "Switched to mode: " << mode << std::endl;
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& lightPosition, glm::mat4 &cameraPosition, bool& toOrbit, ShadingType& shadingType) {
@@ -788,15 +759,15 @@ void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& l
 		else if (event.key.keysym.sym == SDLK_r) changeMode(mode);
 
 		// Switch between shading types
-		else if (event.key.keysym.sym == SDLK_1) shadingType = SHADING_FLAT;
-		else if (event.key.keysym.sym == SDLK_2) shadingType = SHADING_GOURAUD;
-		else if (event.key.keysym.sym == SDLK_3) shadingType = SHADING_PHONG;
+		else if (event.key.keysym.sym == SDLK_1) { shadingType = SHADING_FLAT; std::cout << "Shading mode: Flat Shading" << std::endl; }
+		else if (event.key.keysym.sym == SDLK_2) { shadingType = SHADING_GOURAUD; std::cout << "Shading mode: Gouraud Shading" << std::endl; }
+		else if (event.key.keysym.sym == SDLK_3) { shadingType = SHADING_PHONG; std::cout << "Shading mode: Phone Shading" << std::endl; }
 
 		// Toggle orbit
 		else if (event.key.keysym.sym == SDLK_SPACE) toOrbit = !toOrbit;
 
 		// Debug key
-		else if (event.key.keysym.sym == SDLK_0) {
+		else if (event.key.keysym.sym == SDLK_BACKSLASH) {
 			glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 			std::cout << "Camera Position:" << cameraPosVec3.x << " " << cameraPosVec3.y << " " << cameraPosVec3.z << std::endl;
 			std::cout << "Light Position:" << lightPosition.x << " " << lightPosition.y << " " << lightPosition.z << std::endl;
@@ -812,7 +783,7 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
 	// Week 4 - Task 2
-	std::string objFile = "cornell-box.obj";
+	std::string objFile = "sphere.obj";
 	std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
 	std::vector<glm::vec3> vertices = std::get<0>(objResult);
 	std::vector<glm::vec3> facets = std::get<1>(objResult);
@@ -836,8 +807,8 @@ int main(int argc, char *argv[]) {
 	int mode = 0;
 
 	// Light needs to be slightly less than 1 or else it will always pass the triangle for the light
-	glm::vec3 lightPosition = glm::vec3(0.0, 0.9, 0.0); // TODO: change this?
-	ShadingType shadingType = SHADING_FLAT;
+	glm::vec3 lightPosition = glm::vec3(0.0, 0.8, 1.0); // TODO: change this?
+	ShadingType shadingType = SHADING_GOURAUD;
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
