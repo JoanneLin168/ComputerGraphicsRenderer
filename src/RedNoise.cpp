@@ -704,7 +704,7 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 				if (triangle.colour.green > 0) g = ambience + triangle.colour.green * brightness;
 				if (triangle.colour.blue > 0)  b = ambience + triangle.colour.blue * brightness;
 
-				if (dotIncidence > 0) {
+				if (dotIncidence > 0 && proximityLighting > 0) {
 					r += 255 * specularExponent;
 					g += 255 * specularExponent;
 					b += 255 * specularExponent;
