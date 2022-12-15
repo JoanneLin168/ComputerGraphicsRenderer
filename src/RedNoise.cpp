@@ -18,15 +18,22 @@
 #include <thread> // For multithreading
 #include <mutex>
 
+//#define WIDTH 320
+//#define HEIGHT 240
+//#define SCALE 150 // used for scaling onto img canvas
+
 #define WIDTH 320
 #define HEIGHT 240
 #define SCALE 150 // used for scaling onto img canvas
+
 
 // Values for translation and rotation
 const float DIST = float(0.1);
 const float ANGLE = float((1.0 / 360.0) * (2 * M_PI));
 
 std::mutex mtx; // Used for raytracing
+
+enum ShadingType {SHADING_FLAT, SHADING_GOURAUD, SHADING_PHONG};
 
 // Week 2 - Task 4 
 std::vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, int numberOfValues) {
@@ -88,11 +95,12 @@ std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::stri
 	vertices.push_back(temp);
 
 	// Add vertices and facets to vectors
-	std::string colourName = "Temp"; // tmp - to be updated whenever "usemtl" is shown
+	std::string colourName = "Temp";
 	while (std::getline(file, line)) {
 		// Output the text from the file
 		if (split(line, ' ')[0] == "usemtl") {
 			colourName = split(line, ' ')[1];
+			colourName.pop_back(); // removes any weird remaining whitespace at the end
 		}
 		else if (line[0] == 'v') {
 			std::vector<std::string> verticesStr = split(line, ' ');
@@ -116,6 +124,13 @@ std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::stri
 
 	file.close();
 
+	// Only for objects with no colours
+	if (colours[1] == "Temp") {
+		for (int i = 1; i < colours.size(); i++) {
+			colours[i] = "Red";
+		}
+	}
+
 	return std::make_tuple(vertices, facets, colours);
 }
 
@@ -132,8 +147,8 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 	while (std::getline(file, line)) {
 		// Output the text from the file
 		if (split(line, ' ')[0] == "newmtl") {
-			std::vector<std::string> colourNameStr = split(line, ' ');
-			colourName = colourNameStr[1];
+			colourName = split(line, ' ')[1];
+			colourName.pop_back(); // removes any weird remaining whitespace at the end
 		}
 		else if (split(line, ' ')[0] == "Kd") {
 			std::vector<std::string> rgbStr = split(line, ' ');
@@ -179,6 +194,7 @@ std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertice
 	std::vector<glm::vec3> facets,
 	std::vector<std::string> colourNames,
 	std::unordered_map<std::string, Colour> coloursMap) {
+
 	std::vector<ModelTriangle> results;
 	for (size_t i = 0; i < facets.size(); i++) {
 		glm::vec3 facet = facets[i];
@@ -259,6 +275,21 @@ std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
 	sortedTrianglePoints.push_back(triangle.v0());
 	sortedTrianglePoints.push_back(triangle.v1());
 	sortedTrianglePoints.push_back(triangle.v2());
+
+	if (sortedTrianglePoints[0].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[2]);
+	if (sortedTrianglePoints[0].y > sortedTrianglePoints[1].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[1]);
+	if (sortedTrianglePoints[1].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[1], sortedTrianglePoints[2]);
+
+	sortedTrianglePoints.shrink_to_fit();
+	return sortedTrianglePoints;
+}
+
+std::vector<glm::vec3> sortPointsOnTriangleByHeight(ModelTriangle triangle) {
+	std::vector<glm::vec3> sortedTrianglePoints;
+
+	sortedTrianglePoints.push_back(triangle.vertices[0]);
+	sortedTrianglePoints.push_back(triangle.vertices[1]);
+	sortedTrianglePoints.push_back(triangle.vertices[2]);
 
 	if (sortedTrianglePoints[0].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[2]);
 	if (sortedTrianglePoints[0].y > sortedTrianglePoints[1].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[1]);
@@ -409,7 +440,7 @@ void drawWireframe(DrawingWindow& window, glm::mat4& cameraPosition, float focal
 	}
 }
 
-// ================================================== Rasterised ============================================================= //
+// ================================================== RASTERISED ============================================================= //
 
 // Week 4 - Task 9
 void drawRasterisedScene(DrawingWindow& window, glm::mat4& cameraPosition, float focalLength, std::vector<ModelTriangle> modelTriangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
@@ -466,13 +497,30 @@ bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, gl
 
 		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(false, point, triangleCompare, shadowRay, j);
 
-		//float pointToLight = glm::length(lightPosition - point);
+		// float pointToLight = glm::length(lightPosition - point);
 		// check if there is an intersection with a triangle - no idea why it works if distance < 1 and not with pointToLight
 		if (rayTriangleIntersection.distanceFromCamera < 1 && rayTriangleIntersection.triangleIndex != index) {
 			return true;
 		}
 	}
 	return false;
+}
+
+glm::vec3 getVertexNormal(glm::vec3 vertex, std::vector<ModelTriangle> modelTriangles) {
+	std::vector<glm::vec3> neighbouringNormals;
+	glm::vec3 neighbouringNormalsSum;
+	for (ModelTriangle triangle : modelTriangles) {
+		for (int i = 0; i < triangle.vertices.size(); i++) {
+			if (vertex == triangle.vertices[i]) {
+				neighbouringNormals.push_back(triangle.normal);
+				neighbouringNormalsSum += triangle.normal;
+			}
+		}
+	}
+	neighbouringNormals.shrink_to_fit();
+	glm::vec3 vertexNormal = float(1 / neighbouringNormals.size()) * neighbouringNormalsSum;
+
+	return vertexNormal;
 }
 
 void cameraFireRays(std::vector<std::vector<RayTriangleIntersection>>& closestTriangleBuffer,
@@ -546,7 +594,32 @@ float calculateSpecularExponent(glm::vec3 view, glm::vec3 incidentRay, glm::vec3
 	return pow(result, power);
 }
 
-void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+// Get ratios of two subtriangles from two edges of the triangle and the point
+std::tuple<float, float, float> getUVWAreaRatios(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 point) {
+	glm::vec3 edgeA = v1 - v0;
+	glm::vec3 edgeB = v2 - v0;
+	float area = 0.5f * glm::length(glm::cross(edgeA, edgeB));
+
+	// Get areas of subtriangles (triangles formed by points and edgeA and edgeB)
+	// For subtriangle A
+	glm::vec3 edgeA1 = v0 - point;
+	glm::vec3 edgeA2 = v1 - point;
+	float areaA = 0.5f * glm::length(glm::cross(edgeA1, edgeA2));
+
+	// For subtriangle B
+	glm::vec3 edgeB1 = v0 - point;
+	glm::vec3 edgeB2 = v2 - point;
+	float areaB = 0.5f * glm::length(glm::cross(edgeB1, edgeB2));
+
+	// Get u, v and w
+	float u = areaA / area;
+	float v = areaB / area;
+	float w = 1 - (u + v);
+
+	return std::make_tuple(u, v, w);
+}
+
+void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> modelTriangles, float focalLength, ShadingType shadingType) {
 	window.clearPixels();
 
 	std::vector<std::vector<RayTriangleIntersection>> closestTriangleBuffer(HEIGHT, std::vector<RayTriangleIntersection>(WIDTH, RayTriangleIntersection())); // similar to depthArray, but stores index of closest triangle
@@ -557,11 +630,11 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 	threads.reserve(num_threads);
 	int sectionSize = HEIGHT / num_threads;
 
-	// Call threads
+	// Call threads to check if there is an intersection with the camera
 	for (int i = 0; i < num_threads; i++) {
 		int startY = i * sectionSize;
 		int endY = (i + 1) * sectionSize;
-		threads.push_back(std::thread(cameraFireRays, std::ref(closestTriangleBuffer), cameraPosition, triangles, focalLength, startY, endY));
+		threads.push_back(std::thread(cameraFireRays, std::ref(closestTriangleBuffer), cameraPosition, modelTriangles, focalLength, startY, endY));
 	}
 
 	// Wait for threads to finish tasks
@@ -569,51 +642,116 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 		t.join();
 	}
 
-	// Single-threaded
-	/*std::thread t1(cameraFireRays, std::ref(closestTriangleBuffer), cameraPosition, triangles, focalLength, 0, HEIGHT);
-	t1.join();*/
-
+	// Lighting and Shading
 	for (size_t y = 0; y < HEIGHT; y++) {
 		for (size_t x = 0; x < WIDTH; x++) {
+			// Set up
 			RayTriangleIntersection rayTriangleIntersection = closestTriangleBuffer[y][x];
 			int index = rayTriangleIntersection.triangleIndex;
 			ModelTriangle triangle = rayTriangleIntersection.intersectedTriangle;
-			glm::vec3 point = rayTriangleIntersection.intersectionPoint;
+			glm::vec3 point = rayTriangleIntersection.intersectionPoint; // point that the cameraRay intersected with the triangle
 
-			// Add shadows
-			bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, triangles, focalLength);
+			glm::vec3 v0 = triangle.vertices[0];
+			glm::vec3 v1 = triangle.vertices[1];
+			glm::vec3 v2 = triangle.vertices[2];
+
+			glm::vec3 v0_normal = getVertexNormal(v0, modelTriangles);
+			glm::vec3 v1_normal = getVertexNormal(v1, modelTriangles);
+			glm::vec3 v2_normal = getVertexNormal(v2, modelTriangles);
+
+			// Add lighting and shadows
 			if (index != -1) {
-				// Ambience
-				float ambience = (!shadowRayBlocked) ? 50 : 0;
-
-				// Brightness
-				float proximityLighting = calculateProximityLighting(lightPosition, point, 10);
-
-				// Dot product of angle of incidence
+				// General
+				bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, modelTriangles, focalLength);
 				glm::vec3 shadowRay = lightPosition - point;
-				float dotIncidence = calculateDPAngleOfIncidence(shadowRay, triangle.normal);
-
-				// Dot product of view vector and reflection vector
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-				glm::vec3 view = point - cameraPosVec3;
+				glm::vec3 view = point - cameraPosVec3; // vector from the point to the camera
 				glm::vec3 lightRay = -shadowRay;
-				float specularExponent = calculateSpecularExponent(view, lightRay, triangle.normal, 128);
 
-				float brightness = proximityLighting * dotIncidence + specularExponent;
+				if (shadingType == SHADING_FLAT) {
+					// Lighting
+					float ambience = 50;
+					float proximityLighting = calculateProximityLighting(lightPosition, point, 10);
+					float dotIncidence = calculateDPAngleOfIncidence(shadowRay, triangle.normal);
+					float specularExponent = calculateSpecularExponent(view, lightRay, triangle.normal, 128);
+					float brightness = proximityLighting * dotIncidence + specularExponent;
 
-				float r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
-				float g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
-				float b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
+					float r = float(triangle.colour.red);
+					float g = float(triangle.colour.green);
+					float b = float(triangle.colour.blue);
 
-				uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
-				window.setPixelColour(floor(x), ceil(y), colour);
+					if (specularExponent < proximityLighting * dotIncidence) {
+						r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
+						g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
+						b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
+					}
+					else {
+						r = 255 * specularExponent;
+						g = 255 * specularExponent;
+						b = 255 * specularExponent;
+					}
+
+					uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
+					window.setPixelColour(floor(x), ceil(y), colour);
+				}
+
+				else if (shadingType == SHADING_GOURAUD) {
+					// 1. Get vertex normals by getting average of neighbouring facet normals
+					// 2. Get illumination for each vertex point
+					// 3. Use linear interpolation to apply intensities across polygons
+					std::tuple<float, float, float> uvw = getUVWAreaRatios(v0, v1, v2, point);
+					float u = std::get<0>(uvw);
+					float v = std::get<1>(uvw);
+					float w = std::get<2>(uvw);
+
+					bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, modelTriangles, focalLength);
+					glm::vec3 shadowRay = lightPosition - point;
+					glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
+					glm::vec3 view = point - cameraPosVec3; // vector from the point to the camera
+					glm::vec3 lightRay = -shadowRay;
+
+					// Lighting
+					float proximityLighting0 = calculateProximityLighting(lightPosition, point, 5);
+					float proximityLighting1 = calculateProximityLighting(lightPosition, point, 5);
+					float proximityLighting2 = calculateProximityLighting(lightPosition, point, 5);
+					float dotIncidence0      = calculateDPAngleOfIncidence(shadowRay, v0_normal);
+					float dotIncidence1      = calculateDPAngleOfIncidence(shadowRay, v1_normal);
+					float dotIncidence2      = calculateDPAngleOfIncidence(shadowRay, v2_normal);
+					float specularExponent0  = calculateSpecularExponent(view, lightRay, v0_normal, 128);
+					float specularExponent1  = calculateSpecularExponent(view, lightRay, v1_normal, 128);
+					float specularExponent2  = calculateSpecularExponent(view, lightRay, v2_normal, 128);
+
+					float ambience = 50;
+					float proximityLighting = (u * proximityLighting0) + (v * proximityLighting1) + (w * proximityLighting2);
+					float dotIncidence = (u * dotIncidence0) + (v * dotIncidence1) + (w * dotIncidence2);
+					float specularExponent = (u * specularExponent0) + (v * specularExponent1) + (w * specularExponent2);
+					float brightness = proximityLighting * dotIncidence + specularExponent;
+
+					float r = float(triangle.colour.red);
+					float g = float(triangle.colour.green);
+					float b = float(triangle.colour.blue);
+
+					/*if (specularExponent < proximityLighting * dotIncidence) {
+						r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
+						g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
+						b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
+					}
+					else {
+						r = 255 * specularExponent;
+						g = 255 * specularExponent;
+						b = 255 * specularExponent;
+					}*/
+
+					r = std::max(float(0), std::min(float(triangle.colour.red), ambience + triangle.colour.red * brightness));
+					g = std::max(float(0), std::min(float(triangle.colour.green), ambience + triangle.colour.green * brightness));
+					b = std::max(float(0), std::min(float(triangle.colour.blue), ambience + triangle.colour.blue * brightness));
+
+					uint32_t colour = (255 << 24) + (int(r) << 16) + (int(g) << 8) + int(b);
+					window.setPixelColour(floor(x), ceil(y), colour);
+				}
 			}
 		}
 	}
-	// tmp draw light pos
-	uint32_t colour = (255 << 24) + (int(255) << 16) + (int(125) << 8) + int(0);
-	CanvasPoint light = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
-	window.setPixelColour(floor(light.x), ceil(light.y), colour);
 }
 
 void changeMode(int& mode) {
@@ -622,8 +760,7 @@ void changeMode(int& mode) {
 	else mode = 0;
 }
 
-// REFERENCE: http://www.cs.nott.ac.uk/~pszqiu/Teaching/Courses/G5BAGR/Slides/4-transform.pdf
-void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& lightPosition, glm::mat4 &cameraPosition, bool& toOrbit) {
+void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& lightPosition, glm::mat4 &cameraPosition, bool& toOrbit, ShadingType& shadingType) {
 	if (event.type == SDL_KEYDOWN) {
 		// Translation
 		if (event.key.keysym.sym == SDLK_d) translateCamera("X", DIST, cameraPosition);
@@ -650,13 +787,19 @@ void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& l
 		// Switch between modes
 		else if (event.key.keysym.sym == SDLK_r) changeMode(mode);
 
+		// Switch between shading types
+		else if (event.key.keysym.sym == SDLK_1) shadingType = SHADING_FLAT;
+		else if (event.key.keysym.sym == SDLK_2) shadingType = SHADING_GOURAUD;
+		else if (event.key.keysym.sym == SDLK_3) shadingType = SHADING_PHONG;
+
 		// Toggle orbit
 		else if (event.key.keysym.sym == SDLK_SPACE) toOrbit = !toOrbit;
 
 		// Debug key
 		else if (event.key.keysym.sym == SDLK_0) {
 			glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-			std::cout << cameraPosVec3.x << " " << cameraPosVec3.y << " " << cameraPosVec3.z << std::endl;
+			std::cout << "Camera Position:" << cameraPosVec3.x << " " << cameraPosVec3.y << " " << cameraPosVec3.z << std::endl;
+			std::cout << "Light Position:" << lightPosition.x << " " << lightPosition.y << " " << lightPosition.z << std::endl;
 		}
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
@@ -693,19 +836,25 @@ int main(int argc, char *argv[]) {
 	int mode = 0;
 
 	// Light needs to be slightly less than 1 or else it will always pass the triangle for the light
-	glm::vec3 lightPosition = glm::vec3(0, 0.9, 0.0);
+	glm::vec3 lightPosition = glm::vec3(0.0, 0.9, 0.0); // TODO: change this?
+	ShadingType shadingType = SHADING_FLAT;
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
-		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, lightPosition, cameraPosition, toOrbit);
+		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, lightPosition, cameraPosition, toOrbit, shadingType);
 
 		if (mode == 0) drawWireframe(window, cameraPosition, focalLength, modelTriangles);
 		else if (mode == 1) drawRasterisedScene(window, cameraPosition, focalLength, modelTriangles, coloursMap, colourNames);
-		else if (mode == 2) drawRayTracingScene(window, lightPosition, cameraPosition, modelTriangles, focalLength);
+		else if (mode == 2) drawRayTracingScene(window, lightPosition, cameraPosition, modelTriangles, focalLength, shadingType);
 
 		// Orbit and LookAt
 		if (toOrbit) rotateCamera("Y", ANGLE, cameraPosition);
 		//lookAt(cameraPosition);
+
+		// Tmp: Light position
+		uint32_t colour = (255 << 24) + (int(0) << 16) + (int(255) << 8) + int(0);
+		CanvasPoint light = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
+		window.setPixelColour(floor(light.x), ceil(light.y), colour);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
