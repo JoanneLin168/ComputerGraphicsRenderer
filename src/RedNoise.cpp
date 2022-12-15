@@ -18,14 +18,9 @@
 #include <thread> // For multithreading
 #include <mutex>
 
-//#define WIDTH 320
-//#define HEIGHT 240
-//#define SCALE 150 // used for scaling onto img canvas
-
 #define WIDTH 320
 #define HEIGHT 240
 #define SCALE 150 // used for scaling onto img canvas
-
 
 // Values for translation and rotation
 const float DIST = float(0.1);
@@ -761,7 +756,7 @@ void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& l
 		// Switch between shading types
 		else if (event.key.keysym.sym == SDLK_1) { shadingType = SHADING_FLAT; std::cout << "Shading mode: Flat Shading" << std::endl; }
 		else if (event.key.keysym.sym == SDLK_2) { shadingType = SHADING_GOURAUD; std::cout << "Shading mode: Gouraud Shading" << std::endl; }
-		else if (event.key.keysym.sym == SDLK_3) { shadingType = SHADING_PHONG; std::cout << "Shading mode: Phone Shading" << std::endl; }
+		else if (event.key.keysym.sym == SDLK_3) { shadingType = SHADING_PHONG; std::cout << "Shading mode: Phong Shading" << std::endl; }
 
 		// Toggle orbit
 		else if (event.key.keysym.sym == SDLK_SPACE) toOrbit = !toOrbit;
