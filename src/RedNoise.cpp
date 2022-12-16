@@ -8,6 +8,7 @@
 #include <CanvasPoint.h> // Week 3 - Task 2
 #include <Colour.h> // Week 3 - Task 2
 #include <CanvasTriangle.h> // Week 3 - Task 3
+#include <TextureMap.h> // Week 3 - Task 5
 #include <string>
 #include <ModelTriangle.h> // Week 4 - Task 2
 #include <iostream> // Week 4 - Task 2
@@ -75,32 +76,64 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	return result;
 }
 
+// Week 3 - Task 6
+std::vector<TexturePoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float numberOfValues) {
+	std::vector<TexturePoint> result;
+	float xDiff = to.x - from.x;
+	float yDiff = to.y - from.y;
+
+	float xIncrement = xDiff / numberOfValues;
+	float yIncrement = yDiff / numberOfValues;
+
+	for (float i = 0; i < numberOfValues; i++) {
+		float x = from.x + long(xIncrement * i);
+		float y = from.y + long(yIncrement * i);
+		result.push_back(TexturePoint(x, y));
+	}
+	result.shrink_to_fit();
+
+	return result;
+}
+
 // Week 4 - Task 2: Read from the file and return the vertices and the facets of the model
-std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> readOBJFile(std::string filename, float scaleFactor) {
+// Week 5 - Task 2: Get texture vertices as well
+std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> readOBJFile(std::string filename, float scaleFactor) {
 	std::ifstream file(filename);
 	std::string line;
 
 	// Instantiate vectors
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec3> facets;
+	std::vector<glm::vec3> vertices_tx;
+	std::vector<glm::vec3> facets_tx;
 	std::vector<std::string> colours;
 
 	// Add temp values
 	glm::vec3 temp(0.0, 0.0, 0.0);
 	vertices.push_back(temp);
+	vertices_tx.push_back(temp);
 
 	// Add vertices and facets to vectors
 	std::string colourName = "Temp";
+	bool getTextureFacets = false;
 	while (std::getline(file, line)) {
 		// Output the text from the file
 		if (split(line, ' ')[0] == "usemtl") {
 			colourName = split(line, ' ')[1];
-			colourName.pop_back(); // removes any weird remaining whitespace at the end
 		}
-		else if (line[0] == 'v') {
+		else if (line[0] == 'v' && split(line, ' ')[0] != "vt") { // For triangle vertices
 			std::vector<std::string> verticesStr = split(line, ' ');
 			glm::vec3 vs(std::stof(verticesStr[1]) * scaleFactor, std::stof(verticesStr[2]) * scaleFactor, std::stof(verticesStr[3]) * scaleFactor);
 			vertices.push_back(vs);
+		}
+		else if (split(line, ' ')[0] == "vt") { // For texture vertices
+			std::vector<std::string> verticesStr_tx = split(line, ' ');
+			float v0 = std::stof(verticesStr_tx[1]);
+			float v1 = std::stof(verticesStr_tx[2]);
+			float v2 = 0; // temporary, you don't need to use this
+			glm::vec3 vs(fmod(v0, 1.0f), fmod(v1, 1.0f), fmod(v2, 1.0f)); // according to slides, sometimes points are > 1.0, so use % to wrap-around
+			vertices_tx.push_back(vs);
+			getTextureFacets = true;
 		}
 		else if (line[0] == 'f') {
 			std::vector<std::string> facetsStr = split(line, ' ');
@@ -110,11 +143,22 @@ std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::stri
 			glm::vec3 fs(std::stoi(x), std::stoi(y), std::stoi(z));
 			facets.push_back(fs);
 			colours.push_back(colourName); // push colour for every facet of the same colour, so facet[i] has colours[i]
+
+			if (getTextureFacets) {
+				std::string x_tx = facetsStr[1].substr(facetsStr[1].size() - 1, facetsStr[1].size());
+				std::string y_tx = facetsStr[2].substr(facetsStr[2].size() - 1, facetsStr[2].size());
+				std::string z_tx = facetsStr[3].substr(facetsStr[3].size() - 1, facetsStr[3].size());
+				glm::vec3 fs_tx(std::stoi(x_tx), std::stoi(y_tx), std::stoi(z_tx));
+				facets_tx.push_back(fs_tx);
+				getTextureFacets = false;
+			}
 		}
 	}
 
 	vertices.shrink_to_fit();
 	facets.shrink_to_fit();
+	vertices_tx.shrink_to_fit();
+	facets_tx.shrink_to_fit();
 	colours.shrink_to_fit();
 
 	file.close();
@@ -126,16 +170,18 @@ std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::stri
 		}
 	}
 
-	return std::make_tuple(vertices, facets, colours);
+	return std::make_tuple(vertices, facets, vertices_tx, facets_tx, colours);
 }
 
 // Week 4 - Task 3: Read mtl
-std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
+// Week 5 - Task 2: Get textures as well
+std::tuple<std::unordered_map<std::string, Colour>, std::unordered_map<std::string, TextureMap>> readMTLFile(std::string filename) {
 	std::ifstream file(filename);
 	std::string line;
 
 	// Instantiate vectors
 	std::unordered_map<std::string, Colour> coloursMap;
+	std::unordered_map<std::string, TextureMap> texturesMap;
 
 	// Add colours to hashmap
 	std::string colourName = ""; // will be updated every time "newmtl" is read
@@ -143,7 +189,6 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 		// Output the text from the file
 		if (split(line, ' ')[0] == "newmtl") {
 			colourName = split(line, ' ')[1];
-			colourName.pop_back(); // removes any weird remaining whitespace at the end
 		}
 		else if (split(line, ' ')[0] == "Kd") {
 			std::vector<std::string> rgbStr = split(line, ' ');
@@ -155,10 +200,16 @@ std::unordered_map<std::string, Colour> readMTLFile(std::string filename) {
 			colour.name = colourName;
 			coloursMap[colourName] = colour;
 		}
+		else if (split(line, ' ')[0] == "map_Kd") {
+			std::string filename = split(line, ' ')[1];
+			std::cout << filename << std::endl;
+			TextureMap texture = TextureMap(filename);
+			texturesMap[colourName] = texture;
+		}
 	}
 	file.close();
 
-	return coloursMap;
+	return std::make_tuple(coloursMap, texturesMap);
 }
 
 // =================================================== RASTERISE ======================================================== //
@@ -185,12 +236,17 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 }
 
 // Week 4 - Task 7: Create vector of ModelTriangles
-std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertices,
+std::vector<ModelTriangle> generateModelTriangles(
+	std::vector<glm::vec3> vertices,
 	std::vector<glm::vec3> facets,
+	std::vector<glm::vec3> vertices_tx,
+	std::vector<glm::vec3> facets_tx,
 	std::vector<std::string> colourNames,
-	std::unordered_map<std::string, Colour> coloursMap) {
+	std::unordered_map<std::string, Colour> coloursMap,
+	std::unordered_map<std::string, TextureMap> texturesMap) {
 
 	std::vector<ModelTriangle> results;
+	int index = 0; // used to update the texture map
 	for (size_t i = 0; i < facets.size(); i++) {
 		glm::vec3 facet = facets[i];
 		/*int xIndex = facet.x;
@@ -198,6 +254,18 @@ std::vector<ModelTriangle> generateModelTriangles(std::vector<glm::vec3> vertice
 		int zIndex = facet.z;*/
 		Colour colour = coloursMap[colourNames[i]];
 		ModelTriangle triangle_3d = ModelTriangle(vertices[facet.x], vertices[facet.y], vertices[facet.z], colour);
+
+		// Check if there is a texture for that colour and use texture if it exists
+		if (texturesMap.count(colourNames[i])) {
+			TextureMap texture = texturesMap[colourNames[i]];
+			glm::vec3 txPointVec3_0 = vertices_tx[facets_tx[index].x];
+			glm::vec3 txPointVec3_1 = vertices_tx[facets_tx[index].y];
+			glm::vec3 txPointVec3_2 = vertices_tx[facets_tx[index].z];
+			TexturePoint txPoint_0 = TexturePoint(txPointVec3_0.x, txPointVec3_0.y);
+			TexturePoint txPoint_1 = TexturePoint(txPointVec3_1.x, txPointVec3_1.y);
+			TexturePoint txPoint_2 = TexturePoint(txPointVec3_2.x, txPointVec3_2.y);
+			triangle_3d.texturePoints = { txPoint_0, txPoint_1, txPoint_2 };
+		}
 
 		// Week 8 - Task 3: Calculate normals of every model triangle
 		glm::vec3 normal = glm::normalize(glm::cross((triangle_3d.vertices[1] - triangle_3d.vertices[0]), (triangle_3d.vertices[2] - triangle_3d.vertices[0])));
@@ -257,6 +325,32 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	}
 }
 
+void drawLineUsingTexture(DrawingWindow& window, CanvasPoint from, CanvasPoint to, TextureMap texture) {
+	// For triangle
+	float xDiff = to.x - from.x;
+	float yDiff = to.y - from.y;
+	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
+	float xIncrement = xDiff / numberOfValues;
+	float yIncrement = yDiff / numberOfValues;
+
+	// For texture
+	float xDiff_tx = to.texturePoint.x - from.texturePoint.x;
+	float yDiff_tx = to.texturePoint.y - from.texturePoint.y;
+
+	float xIncrement_tx = xDiff_tx / numberOfValues;
+	float yIncrement_tx = yDiff_tx / numberOfValues;
+
+	for (float i = 0; i < numberOfValues; i++) {
+		float x = from.x + long(xIncrement * i);
+		float y = from.y + long(yIncrement * i);
+		float x_tx = from.texturePoint.x + long(xIncrement_tx * i);
+		float y_tx = from.texturePoint.y + long(yIncrement_tx * i);
+		int index = round((y_tx * texture.width) + x_tx); // number of rows -> y, so use width, x is for the remainder along the row
+		uint32_t colour = texture.pixels[index];
+		window.setPixelColour(round(x), ceil(y), colour);
+	}
+}
+
 // Week 3 - Task 3
 void drawTriangle(DrawingWindow& window, CanvasPoint a, CanvasPoint b, CanvasPoint c, Colour colour, std::vector<std::vector<float>>& depthArray) {
 	drawLine(window, a, b, colour, depthArray); // Draw line a to b
@@ -264,6 +358,7 @@ void drawTriangle(DrawingWindow& window, CanvasPoint a, CanvasPoint b, CanvasPoi
 	drawLine(window, b, c, colour, depthArray); // Draw line b to c
 }
 
+// For CanvasTriangles
 std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
 	std::vector<CanvasPoint> sortedTrianglePoints;
 
@@ -279,6 +374,7 @@ std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
 	return sortedTrianglePoints;
 }
 
+// For ModelTriangles
 std::vector<glm::vec3> sortPointsOnTriangleByHeight(ModelTriangle triangle) {
 	std::vector<glm::vec3> sortedTrianglePoints;
 
@@ -338,6 +434,85 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	}
 	drawLine(window, barrierStart, barrierEnd, colour, depthArray);
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour, depthArray);
+}
+
+// Week 3 - Task 5
+void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, TextureMap texture) {
+	// start off by cutting triangle horizontally so there are two flat bottom triangles
+	// fill each triangle from the line
+
+	// Split triangle into two flat-bottom triangles
+	std::vector<CanvasPoint> sortedPoints = sortPointsOnTriangleByHeight(triangle);
+	CanvasPoint top = sortedPoints[0];
+	CanvasPoint mid = sortedPoints[1];
+	CanvasPoint bot = sortedPoints[2];
+
+	// Draw barrier; barrier = line that splits 2 triangles
+	// Think of x/y = X/Y for right-angle triangles. So to get x, it is y * X/Y, where y = midLength, X/Y = ratio. And then you offset to correct pos by adding top.x
+	float midLength = mid.y - top.y;
+	float ratio = (bot.x - top.x) / (bot.y - top.y); // if you cut big triangle, little triangle is SIMILAR to big triangle, therefore, need to use ratio
+	float barrierEndX = top.x + (midLength * ratio);
+	CanvasPoint barrierStart = CanvasPoint(mid.x, mid.y);
+	CanvasPoint barrierEnd = CanvasPoint(barrierEndX, mid.y);
+
+	// Interpolate between the vertices
+	// Top triangle
+	float numberOfValuesA = mid.y - top.y;
+	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
+	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
+
+	// Bottom triangle
+	float numberOfValuesB = bot.y - mid.y;
+	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
+	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
+
+	//================================================== CREATE TRIANGLES ON TEXTURE =========================================================//
+	// Get texture points
+	TexturePoint top_tx = top.texturePoint;
+	TexturePoint mid_tx = mid.texturePoint;
+	TexturePoint bot_tx = bot.texturePoint;
+
+	// Get barrier for texture
+	// Note: ensure ratio to the barrier for textures is the same as the ratio to the barrier for the triangle
+	glm::vec2 topVec2 = glm::vec2(top_tx.x, top_tx.y);
+	glm::vec2 botVec2 = glm::vec2(bot_tx.x, bot_tx.y);
+	glm::vec2 edgeToCut = botVec2 - topVec2;
+	glm::vec2 barrierEndVec2 = topVec2 + (edgeToCut * ratio);
+	TexturePoint barrierStart_tx = TexturePoint(mid_tx.x, mid_tx.y);
+	TexturePoint barrierEnd_tx = TexturePoint(barrierEndVec2.x, barrierEndVec2.y);
+	barrierStart.texturePoint = barrierStart_tx;
+	barrierEnd.texturePoint = barrierEnd_tx;
+
+	// Interpolate between the vertices
+	// Top triangle
+	std::vector<TexturePoint> pointsAToC_tx = interpolateTexturePoints(top_tx, barrierStart_tx, numberOfValuesA);
+	std::vector<TexturePoint> pointsAToD_tx = interpolateTexturePoints(top_tx, barrierEnd_tx, numberOfValuesA);
+
+	// Bottom triangle
+	std::vector<TexturePoint> pointsBToC_tx = interpolateTexturePoints(bot_tx, barrierStart_tx, numberOfValuesB);
+	std::vector<TexturePoint> pointsBToD_tx = interpolateTexturePoints(bot_tx, barrierEnd_tx, numberOfValuesB);
+
+	//================================================== MAP TEXTURE PIXELS TO CANVAS =========================================================//
+	// Top triangle
+	for (int i = 0; i < numberOfValuesA; i++) {
+		pointsAToC[i].texturePoint = pointsAToC_tx[i];
+		pointsAToD[i].texturePoint = pointsAToD_tx[i];
+	}
+	// Bot triangle
+	for (int i = 0; i < numberOfValuesB; i++) {
+		pointsBToC[i].texturePoint = pointsBToC_tx[i];
+		pointsBToD[i].texturePoint = pointsBToD_tx[i];
+	}
+
+	//================================================== DRAW PIXELS =========================================================//
+	for (int i = 0; i < numberOfValuesA; i++) {
+		drawLineUsingTexture(window, pointsAToC[i], pointsAToD[i], texture);
+	}
+	for (int i = 0; i < numberOfValuesB; i++) {
+		drawLineUsingTexture(window, pointsBToC[i], pointsBToD[i], texture);
+	}
+	// Draw middle line
+	drawLineUsingTexture(window, barrierStart, barrierEnd, texture);
 }
 
 // ==================================== TRANSFORM CAMERA ======================================= //
@@ -438,7 +613,15 @@ void drawWireframe(DrawingWindow& window, glm::mat4& cameraPosition, float focal
 // ================================================== RASTERISED ============================================================= //
 
 // Week 4 - Task 9
-void drawRasterisedScene(DrawingWindow& window, glm::mat4& cameraPosition, float focalLength, std::vector<ModelTriangle> modelTriangles, std::unordered_map<std::string, Colour> coloursMap, std::vector<std::string> colourNames) {
+void drawRasterisedScene(
+	DrawingWindow& window,
+	glm::mat4& cameraPosition,
+	float focalLength,
+	std::vector<ModelTriangle> modelTriangles,
+	std::unordered_map<std::string, Colour> coloursMap,
+	std::unordered_map<std::string, TextureMap> texturesMap,
+	std::vector<std::string> colourNames) {
+
 	window.clearPixels();
 
 	std::vector<CanvasTriangle> canvasTriangles = getCanvasTrianglesFromModelTriangles(modelTriangles, cameraPosition, focalLength);
@@ -449,7 +632,14 @@ void drawRasterisedScene(DrawingWindow& window, glm::mat4& cameraPosition, float
 	for (size_t i = 0; i < canvasTriangles.size(); i++) {
 		CanvasTriangle triangle = canvasTriangles[i];
 		Colour colour = coloursMap[colourNames[i]];
-		drawFilledTriangle(window, triangle, colour, depthArray);
+
+		if (texturesMap.count(colourNames[i])) {
+			TextureMap texture = texturesMap[colourNames[i]];
+			drawTexturedTriangle(window, triangle, texture);
+		}
+		else {
+			drawFilledTriangle(window, triangle, colour, depthArray);
+		}
 	}
 }
 
@@ -778,17 +968,21 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
 	// Week 4 - Task 2
-	std::string objFile = "sphere.obj";
-	std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
+	std::string objFile = "textured-cornell-box.obj";
+	std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
 	std::vector<glm::vec3> vertices = std::get<0>(objResult);
 	std::vector<glm::vec3> facets = std::get<1>(objResult);
-	std::vector<std::string> colourNames = std::get<2>(objResult);
+	std::vector<glm::vec3> vertices_tx = std::get<2>(objResult);
+	std::vector<glm::vec3> facets_tx = std::get<3>(objResult);
+	std::vector<std::string> colourNames = std::get<4>(objResult);
 
 	// Week 4 - Task 3
-	std::string mtlFile = "cornell-box.mtl";
-	std::unordered_map<std::string, Colour> coloursMap = readMTLFile(mtlFile);
+	std::string mtlFile = "textured-cornell-box.mtl";
+	std::tuple<std::unordered_map<std::string, Colour>, std::unordered_map<std::string, TextureMap>> mtlMaps = readMTLFile(mtlFile);
+	std::unordered_map<std::string, Colour> coloursMap = std::get<0>(mtlMaps);
+	std::unordered_map<std::string, TextureMap> texturesMap = std::get<1>(mtlMaps);
 
-	std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, colourNames, coloursMap);
+	std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, vertices_tx, facets_tx, colourNames, coloursMap, texturesMap);
 
 	// Variables for camera
 	glm::mat4 cameraPosition = glm::mat4(
@@ -810,7 +1004,7 @@ int main(int argc, char *argv[]) {
 		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, lightPosition, cameraPosition, toOrbit, shadingType);
 
 		if (mode == 0) drawWireframe(window, cameraPosition, focalLength, modelTriangles);
-		else if (mode == 1) drawRasterisedScene(window, cameraPosition, focalLength, modelTriangles, coloursMap, colourNames);
+		else if (mode == 1) drawRasterisedScene(window, cameraPosition, focalLength, modelTriangles, coloursMap, texturesMap, colourNames);
 		else if (mode == 2) drawRayTracingScene(window, lightPosition, cameraPosition, modelTriangles, focalLength, shadingType);
 
 		// Orbit and LookAt
@@ -821,6 +1015,20 @@ int main(int argc, char *argv[]) {
 		uint32_t colour = (255 << 24) + (int(0) << 16) + (int(255) << 8) + int(0);
 		CanvasPoint light = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
 		window.setPixelColour(floor(light.x), ceil(light.y), colour);
+
+		CanvasPoint a = CanvasPoint(160, 10);
+		CanvasPoint b = CanvasPoint(300, 230);
+		CanvasPoint c = CanvasPoint(10, 150);
+		TexturePoint a_t = TexturePoint(195, 5);
+		TexturePoint b_t = TexturePoint(395, 380);
+		TexturePoint c_t = TexturePoint(65, 330);
+		a.texturePoint = a_t;
+		b.texturePoint = b_t;
+		c.texturePoint = c_t;
+		CanvasTriangle triangle = CanvasTriangle(a, b, c);
+		std::string filename = "texture.ppm";
+		TextureMap texture = TextureMap(filename);
+		drawTexturedTriangle(window, triangle, texture);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
