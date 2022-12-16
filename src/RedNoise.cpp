@@ -59,34 +59,33 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	std::vector<CanvasPoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
-	float zDiff = to.depth - from.depth;
+	if (numberOfValues == 1) return result;
 
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
-	float zIncrement = zDiff / numberOfValues;
+	float xIncrement = xDiff / (numberOfValues - 1);
+	float yIncrement = yDiff / (numberOfValues - 1);
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + float(xIncrement * i);
-		float y = from.y + float(yIncrement * i);
-		float z = from.depth + float(zIncrement * i);
-		result.push_back(CanvasPoint(x, y, z));
+		float x = from.x + (xIncrement * i);
+		float y = from.y + (yIncrement * i);
+		result.push_back(CanvasPoint(x, y));
 	}
 	result.shrink_to_fit();
 
 	return result;
 }
 
-// Week 3 - Task 6
+// Interpolate - for rasterising
 std::vector<TexturePoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float numberOfValues) {
 	std::vector<TexturePoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
+	if (numberOfValues == 1) return result;
 
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
+	float xIncrement = xDiff / (numberOfValues - 1);
+	float yIncrement = yDiff / (numberOfValues - 1);
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
+		float x = from.x + long(xIncrement * i); // no idea why this only works as a long
 		float y = from.y + long(yIncrement * i);
 		result.push_back(TexturePoint(x, y));
 	}
@@ -202,7 +201,6 @@ std::tuple<std::unordered_map<std::string, Colour>, std::unordered_map<std::stri
 		}
 		else if (split(line, ' ')[0] == "map_Kd") {
 			std::string filename = split(line, ' ')[1];
-			std::cout << filename << std::endl;
 			TextureMap texture = TextureMap(filename);
 			texturesMap[colourName] = texture;
 		}
@@ -261,9 +259,9 @@ std::vector<ModelTriangle> generateModelTriangles(
 			glm::vec3 txPointVec3_0 = vertices_tx[facets_tx[index].x];
 			glm::vec3 txPointVec3_1 = vertices_tx[facets_tx[index].y];
 			glm::vec3 txPointVec3_2 = vertices_tx[facets_tx[index].z];
-			TexturePoint txPoint_0 = TexturePoint(txPointVec3_0.x, txPointVec3_0.y);
-			TexturePoint txPoint_1 = TexturePoint(txPointVec3_1.x, txPointVec3_1.y);
-			TexturePoint txPoint_2 = TexturePoint(txPointVec3_2.x, txPointVec3_2.y);
+			TexturePoint txPoint_0 = TexturePoint(txPointVec3_0.x * texture.width, txPointVec3_0.y * texture.height);
+			TexturePoint txPoint_1 = TexturePoint(txPointVec3_1.x * texture.width, txPointVec3_1.y * texture.height);
+			TexturePoint txPoint_2 = TexturePoint(txPointVec3_2.x * texture.width, txPointVec3_2.y * texture.height);
 			triangle_3d.texturePoints = { txPoint_0, txPoint_1, txPoint_2 };
 		}
 
@@ -325,29 +323,32 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	}
 }
 
+// Week 3 - Task 5
 void drawLineUsingTexture(DrawingWindow& window, CanvasPoint from, CanvasPoint to, TextureMap texture) {
 	// For triangle
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
-	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
+
+	float numberOfValues = std::max(abs(xDiff), abs(yDiff)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	if (numberOfValues == 1) numberOfValues = 2;
+	float xIncrement = xDiff / (numberOfValues - 1);
+	float yIncrement = yDiff / (numberOfValues - 1);
 
 	// For texture
 	float xDiff_tx = to.texturePoint.x - from.texturePoint.x;
-	float yDiff_tx = to.texturePoint.y - from.texturePoint.y;
+	float yDiff_tx = to.texturePoint.y - from.texturePoint.y; // TODO: for some reason, negative y
 
-	float xIncrement_tx = xDiff_tx / numberOfValues;
-	float yIncrement_tx = yDiff_tx / numberOfValues;
+	float xIncrement_tx = xDiff_tx / (numberOfValues - 1);
+	float yIncrement_tx = yDiff_tx / (numberOfValues - 1);
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
-		float y = from.y + long(yIncrement * i);
-		float x_tx = from.texturePoint.x + long(xIncrement_tx * i);
+		float x = from.x + (xIncrement * i); 
+		float y = from.y + (yIncrement * i);
+		float x_tx = from.texturePoint.x + long(xIncrement_tx * i); // no idea why this only works as a long
 		float y_tx = from.texturePoint.y + long(yIncrement_tx * i);
-		int index = round((y_tx * texture.width) + x_tx); // number of rows -> y, so use width, x is for the remainder along the row
-		uint32_t colour = texture.pixels[index];
-		window.setPixelColour(round(x), ceil(y), colour);
+		float index = (y_tx * texture.width) + x_tx; // number of rows -> y, so use width, x is for the remainder along the row
+		uint32_t colour = texture.pixels[round(index)];
+		window.setPixelColour(round(x), round(y), colour);
 	}
 }
 
@@ -416,12 +417,12 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 	// Interpolate between the vertices
 	// Top triangle
-	float numberOfValuesA = mid.y - top.y;
+	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
 	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
 
 	// Bottom triangle
-	float numberOfValuesB = bot.y - mid.y;
+	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
@@ -450,19 +451,19 @@ void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, Textur
 	// Draw barrier; barrier = line that splits 2 triangles
 	// Think of x/y = X/Y for right-angle triangles. So to get x, it is y * X/Y, where y = midLength, X/Y = ratio. And then you offset to correct pos by adding top.x
 	float midLength = mid.y - top.y;
-	float ratio = (bot.x - top.x) / (bot.y - top.y); // if you cut big triangle, little triangle is SIMILAR to big triangle, therefore, need to use ratio
+	float ratio = (bot.x - top.x) / (bot.y - top.y); // dx/dy
 	float barrierEndX = top.x + (midLength * ratio);
 	CanvasPoint barrierStart = CanvasPoint(mid.x, mid.y);
 	CanvasPoint barrierEnd = CanvasPoint(barrierEndX, mid.y);
 
 	// Interpolate between the vertices
 	// Top triangle
-	float numberOfValuesA = mid.y - top.y;
+	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
 	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
 
 	// Bottom triangle
-	float numberOfValuesB = bot.y - mid.y;
+	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
@@ -474,10 +475,11 @@ void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, Textur
 
 	// Get barrier for texture
 	// Note: ensure ratio to the barrier for textures is the same as the ratio to the barrier for the triangle
+	float ratioOfEdge = (barrierEnd.y - top.y) / (bot.y - top.y);
 	glm::vec2 topVec2 = glm::vec2(top_tx.x, top_tx.y);
 	glm::vec2 botVec2 = glm::vec2(bot_tx.x, bot_tx.y);
 	glm::vec2 edgeToCut = botVec2 - topVec2;
-	glm::vec2 barrierEndVec2 = topVec2 + (edgeToCut * ratio);
+	glm::vec2 barrierEndVec2 = topVec2 + (edgeToCut * ratioOfEdge);
 	TexturePoint barrierStart_tx = TexturePoint(mid_tx.x, mid_tx.y);
 	TexturePoint barrierEnd_tx = TexturePoint(barrierEndVec2.x, barrierEndVec2.y);
 	barrierStart.texturePoint = barrierStart_tx;
@@ -635,6 +637,9 @@ void drawRasterisedScene(
 
 		if (texturesMap.count(colourNames[i])) {
 			TextureMap texture = texturesMap[colourNames[i]];
+			triangle.v0().texturePoint = modelTriangles[i].texturePoints[0];
+			triangle.v1().texturePoint = modelTriangles[i].texturePoints[1];
+			triangle.v2().texturePoint = modelTriangles[i].texturePoints[2];
 			drawTexturedTriangle(window, triangle, texture);
 		}
 		else {
@@ -1015,20 +1020,6 @@ int main(int argc, char *argv[]) {
 		uint32_t colour = (255 << 24) + (int(0) << 16) + (int(255) << 8) + int(0);
 		CanvasPoint light = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
 		window.setPixelColour(floor(light.x), ceil(light.y), colour);
-
-		CanvasPoint a = CanvasPoint(160, 10);
-		CanvasPoint b = CanvasPoint(300, 230);
-		CanvasPoint c = CanvasPoint(10, 150);
-		TexturePoint a_t = TexturePoint(195, 5);
-		TexturePoint b_t = TexturePoint(395, 380);
-		TexturePoint c_t = TexturePoint(65, 330);
-		a.texturePoint = a_t;
-		b.texturePoint = b_t;
-		c.texturePoint = c_t;
-		CanvasTriangle triangle = CanvasTriangle(a, b, c);
-		std::string filename = "texture.ppm";
-		TextureMap texture = TextureMap(filename);
-		drawTexturedTriangle(window, triangle, texture);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
