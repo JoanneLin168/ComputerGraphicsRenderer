@@ -30,13 +30,14 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	std::vector<CanvasPoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
+	if (numberOfValues == 1) numberOfValues = 2;
 
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
+	float xIncrement = xDiff / (numberOfValues-1);
+	float yIncrement = yDiff / (numberOfValues-1);
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
-		float y = from.y + long(yIncrement * i);
+		float x = from.x + (xIncrement * i);
+		float y = from.y + (yIncrement * i);
 		result.push_back(CanvasPoint(x, y));
 	}
 	result.shrink_to_fit();
@@ -49,12 +50,13 @@ std::vector<TexturePoint> interpolateTexturePoints(TexturePoint from, TexturePoi
 	std::vector<TexturePoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
+	if (numberOfValues == 1) numberOfValues = 2;
 
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
+	float xIncrement = xDiff / (numberOfValues - 1);
+	float yIncrement = yDiff / (numberOfValues - 1);
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
+		float x = from.x + long(xIncrement * i); // no idea why this only works as a long
 		float y = from.y + long(yIncrement * i);
 		result.push_back(TexturePoint(x, y));
 	}
@@ -73,13 +75,13 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	float yIncrement = yDiff / numberOfValues;
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
-		float y = from.y + long(yIncrement * i);
+		float x = from.x + (xIncrement * i);
+		float y = from.y + (yIncrement * i);
 		int red = colour.red;
 		int green = colour.green;
 		int blue = colour.blue;
 		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
-		window.setPixelColour(round(x), ceil(y), colour);
+		window.setPixelColour(round(x), round(y), colour);
 	}
 }
 
@@ -132,12 +134,12 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 	// Interpolate between the vertices
 	// Top triangle
-	float numberOfValuesA = mid.y - top.y;
+	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
 	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
 
 	// Bottom triangle
-	float numberOfValuesB = bot.y - mid.y;
+	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
@@ -148,7 +150,7 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	for (int i = 0; i < pointsBToC.size(); i++) {
 		drawLine(window, pointsBToC[i], pointsBToD[i], colour);
 	}
-	drawLine(window, barrierStart, barrierEnd, colour);
+	//drawLine(window, barrierStart, barrierEnd, colour);
 	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), white);
 }
 
@@ -156,25 +158,27 @@ void drawLineUsingTexture(DrawingWindow& window, CanvasPoint from, CanvasPoint t
 	// For triangle
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
-	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
+
+	float numberOfValues = std::max(abs(xDiff), abs(yDiff)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	if (numberOfValues == 1) numberOfValues = 2;
+	float xIncrement = xDiff / (numberOfValues-1);
+	float yIncrement = yDiff / (numberOfValues-1);
 	
 	// For texture
 	float xDiff_tx = to.texturePoint.x - from.texturePoint.x;
 	float yDiff_tx = to.texturePoint.y - from.texturePoint.y;
 
-	float xIncrement_tx = xDiff_tx / numberOfValues;
-	float yIncrement_tx = yDiff_tx / numberOfValues;
+	float xIncrement_tx = xDiff_tx / (numberOfValues-1);
+	float yIncrement_tx = yDiff_tx / (numberOfValues-1);
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i);
-		float y = from.y + long(yIncrement * i);
-		float x_tx = from.texturePoint.x + long(xIncrement_tx * i);
+		float x = from.x + (xIncrement * i);
+		float y = from.y + (yIncrement * i);
+		float x_tx = from.texturePoint.x + long(xIncrement_tx * i); // no idea why this only works as a long
 		float y_tx = from.texturePoint.y + long(yIncrement_tx * i);
 		int index = round((y_tx * texture.width) + x_tx); // number of rows -> y, so use width, x is for the remainder along the row
 		uint32_t colour = texture.pixels[index];
-		window.setPixelColour(round(x), ceil(y), colour);
+		window.setPixelColour(round(x), round(y), colour);
 	}
 }
 
@@ -199,12 +203,12 @@ void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, Textur
 
 	// Interpolate between the vertices
 	// Top triangle
-	float numberOfValuesA = mid.y - top.y;
+	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
 	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
 
 	// Bottom triangle
-	float numberOfValuesB = bot.y - mid.y;
+	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
@@ -318,6 +322,7 @@ int main(int argc, char *argv[]) {
 		CanvasPoint a = CanvasPoint(160, 10);
 		CanvasPoint b = CanvasPoint(300, 230);
 		CanvasPoint c = CanvasPoint(10, 150);
+		Colour colour = Colour(255, 0, 0); // temp
 		TexturePoint a_t = TexturePoint(195, 5);
 		TexturePoint b_t = TexturePoint(395, 380);
 		TexturePoint c_t = TexturePoint(65, 330);
@@ -328,6 +333,7 @@ int main(int argc, char *argv[]) {
 		std::string filename = "texture.ppm";
 		TextureMap texture = TextureMap(filename);
 		drawTexturedTriangle(window, triangle, texture);
+		//drawFilledTriangle(window, triangle, colour);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
