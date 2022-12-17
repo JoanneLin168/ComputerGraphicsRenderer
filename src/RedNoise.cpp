@@ -59,15 +59,18 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	std::vector<CanvasPoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
+	float zDiff = to.depth - from.depth;
 	if (numberOfValues == 1) return result;
 
 	float xIncrement = xDiff / (numberOfValues - 1);
 	float yIncrement = yDiff / (numberOfValues - 1);
+	float zIncrement = zDiff / (numberOfValues - 1);
 
 	for (float i = 0; i < numberOfValues; i++) {
 		float x = from.x + (xIncrement * i);
 		float y = from.y + (yIncrement * i);
-		result.push_back(CanvasPoint(x, y));
+		float z = from.depth + (zIncrement * i);
+		result.push_back(CanvasPoint(x, y, z));
 	}
 	result.shrink_to_fit();
 
@@ -116,7 +119,10 @@ std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3
 	std::string colourName = "Temp";
 	bool getTextureFacets = false;
 	while (std::getline(file, line)) {
-		// Output the text from the file
+		if (line.size() > 0) {
+			if (line[line.size() - 1] == '\r') line = line.substr(0, line.size() - 1); // apparently Linux doesn't remove \r from \r\n for every new line..
+		}
+		
 		if (split(line, ' ')[0] == "usemtl") {
 			colourName = split(line, ' ')[1];
 		}
@@ -185,7 +191,10 @@ std::tuple<std::unordered_map<std::string, Colour>, std::unordered_map<std::stri
 	// Add colours to hashmap
 	std::string colourName = ""; // will be updated every time "newmtl" is read
 	while (std::getline(file, line)) {
-		// Output the text from the file
+		if (line.size() > 0) {
+			if (line[line.size() - 1] == '\r') line = line.substr(0, line.size() - 1); // apparently Linux doesn't remove \r from \r\n for every new line..
+		}
+
 		if (split(line, ' ')[0] == "newmtl") {
 			colourName = split(line, ' ')[1];
 		}
@@ -247,9 +256,6 @@ std::vector<ModelTriangle> generateModelTriangles(
 	int index = 0; // used to update the texture map
 	for (size_t i = 0; i < facets.size(); i++) {
 		glm::vec3 facet = facets[i];
-		/*int xIndex = facet.x;
-		int yIndex = facet.y;
-		int zIndex = facet.z;*/
 		Colour colour = coloursMap[colourNames[i]];
 		ModelTriangle triangle_3d = ModelTriangle(vertices[facet.x], vertices[facet.y], vertices[facet.z], colour);
 
@@ -300,55 +306,61 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	float zIncrement = zDiff / numberOfValues;
 
 	for (size_t i = 0; i < numberOfValues; i++) {
-		float x = float(from.x + float(xIncrement * i));
-		float y = float(from.y + float(yIncrement * i));
-		float z = float(from.depth + float(zIncrement * i));
-		float red = (float)colour.red;
-		float green = (float)colour.green;
-		float blue = (float)colour.blue;
-		uint32_t colour = (255 << 24) + (int(red) << 16) + (int(green) << 8) + int(blue);
+		float x = from.x + (xIncrement * i);
+		float y = from.y + (yIncrement * i);
+		float z = from.depth + (zIncrement * i);
+		int red = colour.red;
+		int green = colour.green;
+		int blue = colour.blue;
+		uint32_t colour = (255 << 24) + (red << 16) + (green << 8) + blue;
 
 		// If the distance is closer to the screen (1/z bigger than value in depthArray[y][x]) then draw pixel
 		float depthInverse = z; // 1/-depth was done in getCanvasIntersectionPoint()
-		if (ceil(y) >=0 && ceil(y) < HEIGHT && floor(x) >= 0 && floor(x) < WIDTH) {
-			if (depthInverse > depthArray[ceil(y)][floor(x)]) {
-				depthArray[(size_t)ceil(y)][(size_t)floor(x)] = depthInverse;
-				window.setPixelColour((size_t)floor(x), (size_t)ceil(y), colour);
-			}
-			else if (depthArray[(int)ceil(y)][(int)floor(x)] == 0) {
-				depthArray[(size_t)ceil(y)][(size_t)floor(x)] = depthInverse;
-				window.setPixelColour((size_t)floor(x), (size_t)ceil(y), colour);
+		if (round(y) >=0 && round(y) < HEIGHT && round(x) >= 0 && round(x) < WIDTH) {
+			if (depthInverse > depthArray[round(y)][round(x)]) {
+				depthArray[round(y)][round(x)] = depthInverse;
+				window.setPixelColour(round(x), round(y), colour);
 			}
 		}
 	}
 }
 
 // Week 3 - Task 5
-void drawLineUsingTexture(DrawingWindow& window, CanvasPoint from, CanvasPoint to, TextureMap texture) {
+void drawLineUsingTexture(DrawingWindow& window, CanvasPoint from, CanvasPoint to, TextureMap texture, std::vector<std::vector<float>>& depthArray) {
 	// For triangle
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
+	float zDiff = to.depth - from.depth;
 
-	float numberOfValues = std::max(abs(xDiff), abs(yDiff)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
-	if (numberOfValues == 1) numberOfValues = 2;
-	float xIncrement = xDiff / (numberOfValues - 1);
-	float yIncrement = yDiff / (numberOfValues - 1);
+	float numberOfValues = std::max(abs(xDiff), abs(yDiff)); // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float xIncrement = xDiff / numberOfValues;
+	float yIncrement = yDiff / numberOfValues;
+	float zIncrement = zDiff / numberOfValues;
 
 	// For texture
 	float xDiff_tx = to.texturePoint.x - from.texturePoint.x;
-	float yDiff_tx = to.texturePoint.y - from.texturePoint.y; // TODO: for some reason, negative y
+	float yDiff_tx = to.texturePoint.y - from.texturePoint.y;
 
-	float xIncrement_tx = xDiff_tx / (numberOfValues - 1);
-	float yIncrement_tx = yDiff_tx / (numberOfValues - 1);
+	float xIncrement_tx = xDiff_tx / numberOfValues;
+	float yIncrement_tx = yDiff_tx / numberOfValues;
 
 	for (float i = 0; i < numberOfValues; i++) {
 		float x = from.x + (xIncrement * i); 
 		float y = from.y + (yIncrement * i);
+		float z = from.depth + (zIncrement * i);
 		float x_tx = from.texturePoint.x + long(xIncrement_tx * i); // no idea why this only works as a long
 		float y_tx = from.texturePoint.y + long(yIncrement_tx * i);
 		float index = (y_tx * texture.width) + x_tx; // number of rows -> y, so use width, x is for the remainder along the row
 		uint32_t colour = texture.pixels[round(index)];
-		window.setPixelColour(round(x), round(y), colour);
+		
+		// If the distance is closer to the screen (1/z bigger than value in depthArray[y][x]) then draw pixel
+		float depthInverse = z; // 1/-depth was done in getCanvasIntersectionPoint()
+		if (round(y) >= 0 && round(y) < HEIGHT && round(x) >= 0 && round(x) < WIDTH) {
+			if (depthInverse > depthArray[round(y)][round(x)]) {
+				depthArray[round(y)][round(x)] = depthInverse;
+				window.setPixelColour(round(x), round(y), colour);
+			}
+		}
 	}
 }
 
@@ -427,18 +439,18 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
 	// Rasterise - refer to depthArray
-	for (size_t i = 0; i < pointsAToC.size(); i++) {
+	for (int i = 0; i < pointsAToC.size(); i++) {
 		drawLine(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
 	}
-	for (size_t i = 0; i < pointsBToC.size(); i++) {
+	for (int i = 0; i < pointsBToC.size(); i++) {
 		drawLine(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
 	}
 	drawLine(window, barrierStart, barrierEnd, colour, depthArray);
-	drawTriangle(window, triangle.v0(), triangle.v1(), triangle.v2(), colour, depthArray);
+	drawTriangle(window, top, mid, bot, colour, depthArray);
 }
 
 // Week 3 - Task 5
-void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, TextureMap texture) {
+void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, TextureMap texture, std::vector<std::vector<float>>& depthArray) {
 	// start off by cutting triangle horizontally so there are two flat bottom triangles
 	// fill each triangle from the line
 
@@ -508,13 +520,13 @@ void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, Textur
 
 	//================================================== DRAW PIXELS =========================================================//
 	for (int i = 0; i < numberOfValuesA; i++) {
-		drawLineUsingTexture(window, pointsAToC[i], pointsAToD[i], texture);
+		drawLineUsingTexture(window, pointsAToC[i], pointsAToD[i], texture, depthArray);
 	}
 	for (int i = 0; i < numberOfValuesB; i++) {
-		drawLineUsingTexture(window, pointsBToC[i], pointsBToD[i], texture);
+		drawLineUsingTexture(window, pointsBToC[i], pointsBToD[i], texture, depthArray);
 	}
 	// Draw middle line
-	drawLineUsingTexture(window, barrierStart, barrierEnd, texture);
+	//drawLineUsingTexture(window, barrierStart, barrierEnd, texture, depthArray);
 }
 
 // ==================================== TRANSFORM CAMERA ======================================= //
@@ -640,7 +652,7 @@ void drawRasterisedScene(
 			triangle.v0().texturePoint = modelTriangles[i].texturePoints[0];
 			triangle.v1().texturePoint = modelTriangles[i].texturePoints[1];
 			triangle.v2().texturePoint = modelTriangles[i].texturePoints[2];
-			drawTexturedTriangle(window, triangle, texture);
+			drawTexturedTriangle(window, triangle, texture, depthArray);
 		}
 		else {
 			drawFilledTriangle(window, triangle, colour, depthArray);
@@ -1007,7 +1019,6 @@ int main(int argc, char *argv[]) {
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, lightPosition, cameraPosition, toOrbit, shadingType);
-
 		if (mode == 0) drawWireframe(window, cameraPosition, focalLength, modelTriangles);
 		else if (mode == 1) drawRasterisedScene(window, cameraPosition, focalLength, modelTriangles, coloursMap, texturesMap, colourNames);
 		else if (mode == 2) drawRayTracingScene(window, lightPosition, cameraPosition, modelTriangles, focalLength, shadingType);
@@ -1015,11 +1026,6 @@ int main(int argc, char *argv[]) {
 		// Orbit and LookAt
 		if (toOrbit) rotateCamera("Y", ANGLE, cameraPosition);
 		//lookAt(cameraPosition);
-
-		// Tmp: Light position
-		uint32_t colour = (255 << 24) + (int(0) << 16) + (int(255) << 8) + int(0);
-		CanvasPoint light = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
-		window.setPixelColour(floor(light.x), ceil(light.y), colour);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
