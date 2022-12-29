@@ -31,31 +31,11 @@ std::mutex mtx; // Used for raytracing
 
 enum ShadingType {SHADING_FLAT, SHADING_GOURAUD, SHADING_PHONG};
 
-// Week 2 - Task 4 
-std::vector<glm::vec3> interpolateThreeElementValues(glm::vec3 from, glm::vec3 to, int numberOfValues) {
-	std::vector<glm::vec3> result;
-	float xDiff = to.x - from.x;
-	float yDiff = to.y - from.y;
-	float zDiff = to.z - from.z;
-
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
-	float zIncrement = zDiff / numberOfValues;
-
-	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + float(xIncrement * i);
-		float y = from.y + float(yIncrement * i);
-		float z = from.z + float(zIncrement * i);
-		result.push_back(glm::vec3(x, y, z));
-	}
-	result.shrink_to_fit();
-
-	return result;
-}
-
 // Week 3 - Task 4
 // Interpolate - for rasterising
-std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint to, float numberOfValues) {
+std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint to, float n) {
+	int numberOfValues = ceil(n) + 1; // to ensure interpolation includes last value, needs to be ceil() to ensure more every value is captured
+
 	std::vector<CanvasPoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
@@ -77,7 +57,9 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 }
 
 // Interpolate - for rasterising
-std::vector<TexturePoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float numberOfValues) {
+std::vector<TexturePoint> interpolateTexturePoints(TexturePoint from, TexturePoint to, float n) {
+	int numberOfValues = ceil(n) + 1; // to ensure interpolation includes last value, needs to be ceil() to ensure more every value is captured
+
 	std::vector<TexturePoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
@@ -86,7 +68,7 @@ std::vector<TexturePoint> interpolateTexturePoints(TexturePoint from, TexturePoi
 	float yIncrement = yDiff / (numberOfValues - 1);
 
 	for (float i = 0; i < numberOfValues; i++) {
-		float x = from.x + long(xIncrement * i); // no idea why this only works as a long
+		float x = from.x + long(xIncrement * i); // NOTE: textures have to use long for some reason
 		float y = from.y + long(yIncrement * i);
 		result.push_back(TexturePoint(x, y));
 	}
@@ -297,13 +279,15 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
-	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
+	int numberOfValues = ceil(std::max(abs(xDiff), abs(yDiff))) + 1; // to ensure interpolation includes last value, needs to be ceil() to ensure more every value is captured
 
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
-	float zIncrement = zDiff / numberOfValues;
+	if (numberOfValues == 1) return;
 
-	for (size_t i = 0; i < numberOfValues; i++) {
+	float xIncrement = xDiff / (numberOfValues - 1);
+	float yIncrement = yDiff / (numberOfValues - 1);
+	float zIncrement = zDiff / (numberOfValues - 1);
+
+	for (float i = 0; i < numberOfValues; i++) {
 		float x = from.x + (xIncrement * i);
 		float y = from.y + (yIncrement * i);
 		float z = from.depth + (zIncrement * i);
@@ -314,7 +298,7 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, Colour co
 
 		// If the distance is closer to the screen (1/z bigger than value in depthArray[y][x]) then draw pixel
 		float depthInverse = z; // 1/-depth was done in getCanvasIntersectionPoint()
-		if (round(y) >=0 && round(y) < HEIGHT && round(x) >= 0 && round(x) < WIDTH) {
+		if (ceil(y) >=0 && round(y) < HEIGHT && round(x) >= 0 && round(x) < WIDTH) {
 			if (depthInverse > depthArray[round(y)][round(x)]) {
 				depthArray[round(y)][round(x)] = depthInverse;
 				window.setPixelColour(round(x), round(y), colour);
@@ -330,23 +314,23 @@ void drawLineUsingTexture(DrawingWindow& window, CanvasPoint from, CanvasPoint t
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
 
-	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
-	float xIncrement = xDiff / numberOfValues;
-	float yIncrement = yDiff / numberOfValues;
-	float zIncrement = zDiff / numberOfValues;
+	int numberOfValues = ceil(std::max(abs(xDiff), abs(yDiff))) + 1; // to ensure interpolation includes last value, needs to be ceil() to ensure more every value is captured
+	float xIncrement = xDiff / (numberOfValues - 1);
+	float yIncrement = yDiff / (numberOfValues - 1);
+	float zIncrement = zDiff / (numberOfValues - 1);
 
 	// For texture
 	float xDiff_tx = to.texturePoint.x - from.texturePoint.x;
 	float yDiff_tx = to.texturePoint.y - from.texturePoint.y;
 
-	float xIncrement_tx = xDiff_tx / numberOfValues;
-	float yIncrement_tx = yDiff_tx / numberOfValues;
+	float xIncrement_tx = xDiff_tx / (numberOfValues - 1);
+	float yIncrement_tx = yDiff_tx / (numberOfValues - 1);
 
 	for (float i = 0; i < numberOfValues; i++) {
 		float x = from.x + (xIncrement * i); 
 		float y = from.y + (yIncrement * i);
 		float z = from.depth + (zIncrement * i);
-		float x_tx = from.texturePoint.x + long(xIncrement_tx * i); // no idea why this only works as a long
+		float x_tx = from.texturePoint.x + long(xIncrement_tx * i); // NOTE: textures have to use long for some reason
 		float y_tx = from.texturePoint.y + long(yIncrement_tx * i);
 		float index = (y_tx * texture.width) + x_tx; // number of rows -> y, so use width, x is for the remainder along the row
 		uint32_t colour = texture.pixels[round(index)];
@@ -427,12 +411,12 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 	// Interpolate between the vertices
 	// Top triangle
-	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)); // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
 	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
 
 	// Bottom triangle
-	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)); // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
 	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
@@ -468,12 +452,12 @@ void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, Textur
 
 	// Interpolate between the vertices
 	// Top triangle
-	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y));
 	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
 	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
 
 	// Bottom triangle
-	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)) + 1; // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y));
 	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
@@ -679,7 +663,7 @@ RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 point
 	float t = getAbsolute ? abs(possibleSolution[0]) : possibleSolution[0];
 	float u = possibleSolution[1];
 	float v = possibleSolution[2];
-	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (double(u) + double(v)) <= 1.0 && t >= 0) {
+	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (double(u) + double(v)) <= 1.0 && t >= 0) { // masking u and v to avoid overflow
 		glm::vec3 r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
 		RayTriangleIntersection rayTriangleIntersection = RayTriangleIntersection(r, t, triangle, index);
 		rayTriangleIntersection.t = t;
