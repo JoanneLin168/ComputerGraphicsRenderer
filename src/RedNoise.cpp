@@ -60,7 +60,6 @@ std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint t
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
-	if (numberOfValues == 1) return result;
 
 	float xIncrement = xDiff / (numberOfValues - 1);
 	float yIncrement = yDiff / (numberOfValues - 1);
@@ -82,7 +81,6 @@ std::vector<TexturePoint> interpolateTexturePoints(TexturePoint from, TexturePoi
 	std::vector<TexturePoint> result;
 	float xDiff = to.x - from.x;
 	float yDiff = to.y - from.y;
-	if (numberOfValues == 1) return result;
 
 	float xIncrement = xDiff / (numberOfValues - 1);
 	float yIncrement = yDiff / (numberOfValues - 1);
@@ -332,7 +330,7 @@ void drawLineUsingTexture(DrawingWindow& window, CanvasPoint from, CanvasPoint t
 	float yDiff = to.y - from.y;
 	float zDiff = to.depth - from.depth;
 
-	float numberOfValues = std::max(abs(xDiff), abs(yDiff)); // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float numberOfValues = std::max(abs(xDiff), abs(yDiff));
 	float xIncrement = xDiff / numberOfValues;
 	float yIncrement = yDiff / numberOfValues;
 	float zIncrement = zDiff / numberOfValues;
@@ -662,6 +660,7 @@ void drawRasterisedScene(
 
 // =================================================== RAY TRACING ======================================================== //
 // Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
+// Barycentric coordinates
 RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 point, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
 
 	// point refers to either camera or point on triangle, depending on which function is using this function
@@ -1014,7 +1013,7 @@ int main(int argc, char *argv[]) {
 
 	// Light needs to be slightly less than 1 or else it will always pass the triangle for the light
 	glm::vec3 lightPosition = glm::vec3(0.0, 0.8, 1.0); // TODO: change this?
-	ShadingType shadingType = SHADING_GOURAUD;
+	ShadingType shadingType = SHADING_FLAT;
 
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
