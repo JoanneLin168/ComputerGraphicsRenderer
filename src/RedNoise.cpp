@@ -411,12 +411,12 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 	// Interpolate between the vertices
 	// Top triangle
-	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y)); // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y));
 	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
 	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
 
 	// Bottom triangle
-	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y)); // Note: +1 here, when you interpolate, -1 for dividing to get increment, but keep +1 for for loop to get last row
+	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y));
 	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
 	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
 
