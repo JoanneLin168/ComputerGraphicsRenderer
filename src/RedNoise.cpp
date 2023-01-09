@@ -21,7 +21,7 @@
 
 #define WIDTH 320
 #define HEIGHT 240
-#define SCALE 150 // used for scaling onto img canvas
+#define SCALE 200 // used for scaling onto img canvas
 
 // Values for translation and rotation
 const float DIST = float(0.1);
@@ -557,9 +557,9 @@ void rotateCamera(std::string axis, float theta, glm::mat4& cameraPosition) {
 	}
 	else if (axis == "Y") {
 		rotationMatrix = glm::mat4(
-			cos(theta), 0, sin(theta), 0,
+			cos(theta), 0, -sin(theta), 0,
 			0, 1, 0, 0,
-			-sin(theta), 0, cos(theta), 0,
+			sin(theta), 0, cos(theta), 0,
 			0, 0, 0, 1
 		);
 	}
@@ -781,8 +781,8 @@ float calculateDPAngleOfIncidence(glm::vec3 shadowRay, glm::vec3 normal) {
 
 float calculateSpecularExponent(glm::vec3 view, glm::vec3 incidentRay, glm::vec3 normal, float power) {
 	float dot = glm::dot(glm::normalize(incidentRay), normal);
-	glm::vec3 reflectedRay = incidentRay - (normal*2.0f) * dot;
-	float result = glm::dot(glm::normalize(view), glm::normalize(reflectedRay));
+	glm::vec3 reflectedRay = glm::normalize(incidentRay) - (normal*2.0f) * dot;
+	float result = glm::dot(glm::normalize(view), glm::normalize(glm::normalize(reflectedRay)));
 	return pow(result, power);
 }
 
@@ -968,7 +968,7 @@ int main(int argc, char *argv[]) {
 	SDL_Event event;
 
 	// Week 4 - Task 2
-	std::string objFile = "textured-cornell-box.obj";
+	std::string objFile = "sphere.obj";
 	std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
 	std::vector<glm::vec3> vertices = std::get<0>(objResult);
 	std::vector<glm::vec3> facets = std::get<1>(objResult);
@@ -1007,7 +1007,7 @@ int main(int argc, char *argv[]) {
 		else if (mode == 2) drawRayTracingScene(window, lightPosition, cameraPosition, modelTriangles, focalLength, shadingType);
 
 		// Orbit and LookAt
-		if (toOrbit) rotateCamera("Y", ANGLE, cameraPosition);
+		if (toOrbit) rotateCamera("Y", -ANGLE, cameraPosition);
 		//lookAt(cameraPosition);
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
