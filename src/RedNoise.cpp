@@ -21,11 +21,15 @@
 
 #define WIDTH 320
 #define HEIGHT 240
-#define SCALE 200 // used for scaling onto img canvas
+#define SCALE 150 // used for scaling onto img canvas
 
 // Values for translation and rotation
-const float DIST = float(0.1);
+const float DIST = 0.1f;
 const float ANGLE = float((1.0 / 360.0) * (2 * M_PI));
+
+// Values for lighting
+const float LIGHT_STRENGTH = 20;
+const float SPECULAR_EXPONENT = 32; // Note: increase this to 256 for cornell box
 
 std::mutex mtx; // Used for raytracing
 
@@ -432,6 +436,8 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 }
 
 // Week 3 - Task 5
+// Note: If asked a question regarding how to get the value of a point in the texture triangle, using a point in the actual triangle
+// use Barycentric coordinates to get ratios u and v (r = p0 + u(p1-p0) + v(p2-p0)) and use that equation but with the texture triangle vertices to get the value of the point on the texture triangle
 void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, TextureMap texture, std::vector<std::vector<float>>& depthArray) {
 	// start off by cutting triangle horizontally so there are two flat bottom triangles
 	// fill each triangle from the line
@@ -584,8 +590,8 @@ void lookAt(glm::mat4& cameraPosition) {
 	// vertical is relative to the world (0,1,0)
 	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 	glm::vec3 forward = glm::normalize(cameraPosVec3 - origin);
-	glm::vec3 right = glm::cross(vertical, forward);
-	glm::vec3 up = glm::cross(forward, right);
+	glm::vec3 right = glm::normalize(glm::cross(vertical, forward));
+	glm::vec3 up = glm::normalize(glm::cross(forward, right));
 	cameraPosition = glm::mat4(glm::vec4(right, 0), glm::vec4(up, 0), glm::vec4(forward, 0), cameraPosition[3]);
 
 }
@@ -645,13 +651,11 @@ void drawRasterisedScene(
 // =================================================== RAY TRACING ======================================================== //
 // Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
 // Barycentric coordinates
-RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 point, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
-
-	// point refers to either camera or point on triangle, depending on which function is using this function
+RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourceOfRay, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
 
 	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
 	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
-	glm::vec3 SPVector = point - triangle.vertices[0];
+	glm::vec3 SPVector = sourceOfRay - triangle.vertices[0];
 	glm::mat3 DEMatrix(-rayDirection, e0, e1);
 
 	// possibleSolution = (t,u,v) where
@@ -682,13 +686,12 @@ bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, gl
 	// If shadow ray hits a triangle, then you need to draw a shadow
 	for (int j = 0; j < triangles.size(); j++) {
 		ModelTriangle triangleCompare = triangles[j];
-		glm::vec3 shadowRay = lightPosition - point; // to - from, to=light, from=surface of triangle
+		glm::vec3 shadowRay = glm::normalize(lightPosition - point); // to - from, to=light, from=surface of triangle
 
 		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(false, point, triangleCompare, shadowRay, j);
 
 		// float pointToLight = glm::length(lightPosition - point);
-		// check if there is an intersection with a triangle - no idea why it works if distance < 1 and not with pointToLight
-		if (rayTriangleIntersection.distanceFromCamera < 1 && rayTriangleIntersection.triangleIndex != index) {
+		if (rayTriangleIntersection.distanceFromCamera < glm::length(shadowRay) && rayTriangleIntersection.triangleIndex != index) {
 			return true;
 		}
 	}
@@ -741,7 +744,7 @@ void cameraFireRays(std::vector<std::vector<RayTriangleIntersection>>& closestTr
 					cameraPosition[1][0], cameraPosition[1][1], cameraPosition[1][2],
 					cameraPosition[2][0], cameraPosition[2][1], cameraPosition[2][2]
 				);
-				glm::vec3 rayDirection = cameraOrientMat3 * glm::vec3(x_3d, y_3d, z_3d);
+				glm::vec3 rayDirection = glm::normalize(cameraOrientMat3 * glm::vec3(x_3d, y_3d, z_3d));
 
 				RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(true, cameraPosVec3, triangle, rayDirection, index);
 
@@ -772,18 +775,18 @@ float calculateProximityLighting(glm::vec3 lightPosition, glm::vec3 point, float
 	return brightness;
 }
 
-float calculateDPAngleOfIncidence(glm::vec3 shadowRay, glm::vec3 normal) {
+float calculateIncidenceLighting(glm::vec3 shadowRay, glm::vec3 normal) {
 	float dot = glm::dot(normal, normalize(shadowRay));
 	dot = std::min(float(1.0), dot);
 	dot = std::max(float(0.0), dot);
 	return dot;
 }
 
-float calculateSpecularExponent(glm::vec3 view, glm::vec3 incidentRay, glm::vec3 normal, float power) {
+float calculateSpecularLighting(glm::vec3 view, glm::vec3 incidentRay, glm::vec3 normal, float exponent) {
 	float dot = glm::dot(glm::normalize(incidentRay), normal);
-	glm::vec3 reflectedRay = glm::normalize(incidentRay) - (normal*2.0f) * dot;
-	float result = glm::dot(glm::normalize(view), glm::normalize(glm::normalize(reflectedRay)));
-	return pow(result, power);
+	glm::vec3 reflectedRay = glm::normalize(incidentRay) - (2.0f * normal * dot);
+	float result = std::max(0.0f, glm::dot(glm::normalize(view), glm::normalize(reflectedRay)));
+	return pow(result, exponent);
 }
 
 void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> modelTriangles, float focalLength, ShadingType shadingType) {
@@ -832,61 +835,63 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 			glm::vec3 n1 = getVertexNormal(modelTriangles, v1);
 			glm::vec3 n2 = getVertexNormal(modelTriangles, v2);
 
-			glm::vec3 hitNormal = (w * n0) + (u * n1) + (v * n2); // for Phong shading
-
 			// Add lighting and shadows
 			if (index != -1) {
 				// General
-				bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, modelTriangles, focalLength);
 				glm::vec3 shadowRay = lightPosition - point;
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 				glm::vec3 view = cameraPosVec3 - point; // vector to the camera from the point
-				glm::vec3 lightRay = -shadowRay;
+				glm::vec3 incidenceRay = point - lightPosition;
 
 				// Lighting setup
 				float proximityLighting = 0;
-				float dotIncidence = 0;
-				float specularExponent = 0;
+				float incidenceLighting = 0;
+				float specularLighting = 0;
 				float brightness = 0;
-				float ambience = (!shadowRayBlocked) ? 20 : 0;
+				float ambience = 20;
 
 				if (shadingType == SHADING_FLAT) {
 					// Lighting
-					proximityLighting = calculateProximityLighting(lightPosition, point, 10);
-					dotIncidence = calculateDPAngleOfIncidence(shadowRay, triangle.normal);
-					specularExponent = calculateSpecularExponent(view, lightRay, triangle.normal, 256);
+					proximityLighting = calculateProximityLighting(lightPosition, point, LIGHT_STRENGTH);
+					incidenceLighting = calculateIncidenceLighting(shadowRay, triangle.normal);
+					specularLighting = calculateSpecularLighting(view, incidenceRay, triangle.normal, SPECULAR_EXPONENT);
 				}
 
 				else if (shadingType == SHADING_GOURAUD) {
 					// 1. Get vertex normals by getting average of neighbouring facet normals
 					// 2. Get illumination for each vertex point
-					// 3. Use linear interpolation to apply intensities across polygons
-					float proximityLighting0 = calculateProximityLighting(lightPosition, n0, 10);
-					float proximityLighting1 = calculateProximityLighting(lightPosition, n1, 10);
-					float proximityLighting2 = calculateProximityLighting(lightPosition, n2, 10);
-					float dotIncidence0 = calculateDPAngleOfIncidence(shadowRay, n0);
-					float dotIncidence1 = calculateDPAngleOfIncidence(shadowRay, n1);
-					float dotIncidence2 = calculateDPAngleOfIncidence(shadowRay, n2);
-					float specularExponent0 = calculateSpecularExponent(view, lightRay, n0, 256);
-					float specularExponent1 = calculateSpecularExponent(view, lightRay, n1, 256);
-					float specularExponent2 = calculateSpecularExponent(view, lightRay, n2, 256);
+					// 3. Use Barycentric coordinates to interpolate and get intensities for each hit point
+					glm::vec3 vertexToLight0 = lightPosition - v0;
+					glm::vec3 vertexToLight1 = lightPosition - v1;
+					glm::vec3 vertexToLight2 = lightPosition - v2;
+
+					float proximityLighting0 = calculateProximityLighting(lightPosition, n0, LIGHT_STRENGTH);
+					float proximityLighting1 = calculateProximityLighting(lightPosition, n1, LIGHT_STRENGTH);
+					float proximityLighting2 = calculateProximityLighting(lightPosition, n2, LIGHT_STRENGTH);
+					float incidenceLighting0 = calculateIncidenceLighting(vertexToLight0, n0);
+					float incidenceLighting1 = calculateIncidenceLighting(vertexToLight1, n1);
+					float incidenceLighting2 = calculateIncidenceLighting(vertexToLight2, n2);
+					float specularExponent0 = calculateSpecularLighting(view, incidenceRay, n0, SPECULAR_EXPONENT);
+					float specularExponent1 = calculateSpecularLighting(view, incidenceRay, n1, SPECULAR_EXPONENT);
+					float specularExponent2 = calculateSpecularLighting(view, incidenceRay, n2, SPECULAR_EXPONENT);
 
 					proximityLighting = (w * proximityLighting0) + (u * proximityLighting1) + (v * proximityLighting2);
-					dotIncidence = (w * dotIncidence0) + (u * dotIncidence1) + (v * dotIncidence2);
-					specularExponent = (w * specularExponent0) + (u * specularExponent1) + (v * specularExponent2);
+					incidenceLighting = (w * incidenceLighting0) + (u * incidenceLighting1) + (v * incidenceLighting2);
+					specularLighting = (w * specularExponent0) + (u * specularExponent1) + (v * specularExponent2);
 				}
 
 				else if (shadingType == SHADING_PHONG) {
 					// 1. Get vertex normals by getting average of neighbouring facet normals
-					// 2. Get illumination for each vertex point
-					// 3. Use linear interpolation to get normals for each point
-					proximityLighting = calculateProximityLighting(lightPosition, point, 10);
-					dotIncidence = calculateDPAngleOfIncidence(shadowRay, hitNormal);
-					specularExponent = calculateSpecularExponent(view, lightRay, hitNormal, 256);
+					// 2. Use Barycentric coordinates to interpolate and get normals for each hit point
+					// 3. Use hit normals to get illumination for each hit point
+					glm::vec3 hitNormal = (w * n0) + (u * n1) + (v * n2);
+					proximityLighting = calculateProximityLighting(lightPosition, point, LIGHT_STRENGTH);
+					incidenceLighting = calculateIncidenceLighting(shadowRay, hitNormal);
+					specularLighting = calculateSpecularLighting(view, incidenceRay, hitNormal, SPECULAR_EXPONENT);
 				}
 
-				// Colour in
-				brightness = proximityLighting * dotIncidence;
+				// Colour in hit point
+				brightness = proximityLighting * incidenceLighting;
 				float r = 0;
 				float g = 0;
 				float b = 0;
@@ -894,10 +899,10 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 				if (triangle.colour.green > 0) g = ambience + triangle.colour.green * brightness;
 				if (triangle.colour.blue > 0)  b = ambience + triangle.colour.blue * brightness;
 
-				if (dotIncidence > 0 && proximityLighting > 0) {
-					r += 255 * specularExponent;
-					g += 255 * specularExponent;
-					b += 255 * specularExponent;
+				if (incidenceLighting > 0 && proximityLighting > 0 && specularLighting > 0) {
+					r += 255 * specularLighting;
+					g += 255 * specularLighting;
+					b += 255 * specularLighting;
 				}
 				r = glm::clamp(r, 0.0f, 255.0f);
 				g = glm::clamp(g, 0.0f, 255.0f);
@@ -995,8 +1000,8 @@ int main(int argc, char *argv[]) {
 	bool toOrbit = false;
 	int mode = 0;
 
-	// Light needs to be slightly less than 1 or else it will always pass the triangle for the light
-	glm::vec3 lightPosition = glm::vec3(0.0, 0.8, 1.0); // TODO: change this?
+	// Lighting
+	glm::vec3 lightPosition = (objFile == "sphere.obj") ? glm::vec3(-0.3, 0.8, 1.5) : glm::vec3(0.0, 0.8, 1.0);
 	ShadingType shadingType = SHADING_FLAT;
 
 	while (true) {
@@ -1009,6 +1014,12 @@ int main(int argc, char *argv[]) {
 		// Orbit and LookAt
 		if (toOrbit) rotateCamera("Y", -ANGLE, cameraPosition);
 		//lookAt(cameraPosition);
+
+		// For debugging
+		CanvasPoint lightCanvasPoint = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
+		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
+		if (round(lightCanvasPoint.x) < WIDTH && round(lightCanvasPoint.y) < HEIGHT) window.setPixelColour(round(lightCanvasPoint.x), round(lightCanvasPoint.y), lightColour);
+		
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
