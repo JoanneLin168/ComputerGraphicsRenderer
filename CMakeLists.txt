@@ -35,7 +35,13 @@ add_executable(RedNoise
         libs/sdw/TextureMap.cpp
         libs/sdw/TexturePoint.cpp
         libs/sdw/Utils.cpp
-        src/RedNoise.cpp)
+        libs/utils/Files.cpp
+        libs/utils/Constants.cpp
+        libs/utils/Rasteriser.cpp
+        libs/utils/Draw.cpp
+        libs/utils/CameraController.cpp
+        libs/utils/RayTracer.cpp
+        libs/utils/Lighting.cpp)
 
 if (MSVC)
     target_compile_options(RedNoise
