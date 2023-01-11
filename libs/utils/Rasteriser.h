@@ -1,7 +1,8 @@
 #pragma once
 
-#include <CanvasTriangle.h>
-#include <DrawingWindow.h>
+#include <CanvasPoint.h>
+#include <TexturePoint.h>
+#include <glm/glm.hpp>
 #include <vector>
 
 std::vector<CanvasPoint> interpolateCanvasPoints(CanvasPoint from, CanvasPoint to, float n);

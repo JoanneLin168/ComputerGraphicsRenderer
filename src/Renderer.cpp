@@ -8,7 +8,10 @@
 #include <Files.h>
 #include <Constants.h>
 #include <Draw.h>
-#include <Rasterise.h>
+#include <CameraController.h>
+#include <Rasteriser.h>
+#include <RayTracer.h>
+#include <Lighting.h>
 
 #include <glm/glm.hpp> // Week 2 - Task 4
 #include <CanvasPoint.h> // Week 3 - Task 2
@@ -19,15 +22,10 @@
 #include <ModelTriangle.h> // Week 4 - Task 2
 
 #include <RayTriangleIntersection.h> // Week 7 - Task 2 
-#include <thread> // For multithreading
+#include <thread> // For raytracing
 #include <mutex>
 
-std::mutex mtx; // Used for raytracing
-
-enum ShadingType {SHADING_FLAT, SHADING_GOURAUD, SHADING_PHONG};
-
 // =================================================== RASTERISE ======================================================== //
-
 // Week 4 - Task 7: Create vector of ModelTriangles
 std::vector<ModelTriangle> generateModelTriangles(
 	std::vector<glm::vec3> vertices,
@@ -80,246 +78,6 @@ std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<Mod
 	return canvasTriangles;
 }
 
-// ==================================== DRAW ======================================= //
-// For CanvasTriangles
-std::vector<CanvasPoint> sortPointsOnTriangleByHeight(CanvasTriangle triangle) {
-	std::vector<CanvasPoint> sortedTrianglePoints;
-
-	sortedTrianglePoints.push_back(triangle.v0());
-	sortedTrianglePoints.push_back(triangle.v1());
-	sortedTrianglePoints.push_back(triangle.v2());
-
-	if (sortedTrianglePoints[0].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[2]);
-	if (sortedTrianglePoints[0].y > sortedTrianglePoints[1].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[1]);
-	if (sortedTrianglePoints[1].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[1], sortedTrianglePoints[2]);
-
-	sortedTrianglePoints.shrink_to_fit();
-	return sortedTrianglePoints;
-}
-
-// For ModelTriangles
-std::vector<glm::vec3> sortPointsOnTriangleByHeight(ModelTriangle triangle) {
-	std::vector<glm::vec3> sortedTrianglePoints;
-
-	sortedTrianglePoints.push_back(triangle.vertices[0]);
-	sortedTrianglePoints.push_back(triangle.vertices[1]);
-	sortedTrianglePoints.push_back(triangle.vertices[2]);
-
-	if (sortedTrianglePoints[0].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[2]);
-	if (sortedTrianglePoints[0].y > sortedTrianglePoints[1].y) std::swap(sortedTrianglePoints[0], sortedTrianglePoints[1]);
-	if (sortedTrianglePoints[1].y > sortedTrianglePoints[2].y) std::swap(sortedTrianglePoints[1], sortedTrianglePoints[2]);
-
-	sortedTrianglePoints.shrink_to_fit();
-	return sortedTrianglePoints;
-}
-
-// Week 4 - Task 9
-void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour colour, std::vector<std::vector<float>>& depthArray) {
-	// start off by cutting triangle horizontally so there are two flat bottom triangles
-	// fill each triangle from the line
-
-	// Split triangle into two flat-bottom triangles
-	std::vector<CanvasPoint> sortedPoints = sortPointsOnTriangleByHeight(triangle);
-	CanvasPoint top = sortedPoints[0];
-	CanvasPoint mid = sortedPoints[1];
-	CanvasPoint bot = sortedPoints[2];
-
-	// Get barrier; barrier = line that splits 2 triangles
-	float midLength = mid.y - top.y;
-	float ratioX = (bot.x - top.x) / (bot.y - top.y); // if you cut big triangle, little triangle is SIMILAR to big triangle, therefore, need to use ratio
-	float ratioZ = (bot.depth - top.depth) / (bot.y - top.y);
-	float barrierEndX = top.x + (midLength * ratioX);
-	float barrierEndZ = top.depth + (midLength * ratioZ);
-	CanvasPoint barrierStart = CanvasPoint(mid.x, mid.y, mid.depth);
-	CanvasPoint barrierEnd = CanvasPoint(barrierEndX, mid.y, barrierEndZ);
-
-	//   a
-	//  d    c <- barrier
-	// b
-
-	// Interpolate between the vertices
-	// Top triangle
-	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y));
-	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
-	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
-
-	// Bottom triangle
-	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y));
-	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
-	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
-
-	// Rasterise - refer to depthArray
-	for (int i = 0; i < pointsAToC.size(); i++) {
-		drawLine(window, pointsAToC[i], pointsAToD[i], colour, depthArray);
-	}
-	for (int i = 0; i < pointsBToC.size(); i++) {
-		drawLine(window, pointsBToC[i], pointsBToD[i], colour, depthArray);
-	}
-	drawLine(window, barrierStart, barrierEnd, colour, depthArray);
-	drawTriangle(window, top, mid, bot, colour, depthArray);
-}
-
-// Week 3 - Task 5
-// Note: If asked a question regarding how to get the value of a point in the texture triangle, using a point in the actual triangle
-// use Barycentric coordinates to get ratios u and v (r = p0 + u(p1-p0) + v(p2-p0)) and use that equation but with the texture triangle vertices to get the value of the point on the texture triangle
-void drawTexturedTriangle(DrawingWindow& window, CanvasTriangle triangle, TextureMap texture, std::vector<std::vector<float>>& depthArray) {
-	// start off by cutting triangle horizontally so there are two flat bottom triangles
-	// fill each triangle from the line
-
-	// Split triangle into two flat-bottom triangles
-	std::vector<CanvasPoint> sortedPoints = sortPointsOnTriangleByHeight(triangle);
-	CanvasPoint top = sortedPoints[0];
-	CanvasPoint mid = sortedPoints[1];
-	CanvasPoint bot = sortedPoints[2];
-
-	// Draw barrier; barrier = line that splits 2 triangles
-	// Think of x/y = X/Y for right-angle triangles. So to get x, it is y * X/Y, where y = midLength, X/Y = ratio. And then you offset to correct pos by adding top.x
-	float midLength = mid.y - top.y;
-	float ratio = (bot.x - top.x) / (bot.y - top.y); // dx/dy
-	float barrierEndX = top.x + (midLength * ratio);
-	CanvasPoint barrierStart = CanvasPoint(mid.x, mid.y);
-	CanvasPoint barrierEnd = CanvasPoint(barrierEndX, mid.y);
-
-	// Interpolate between the vertices
-	// Top triangle
-	float numberOfValuesA = std::max(abs(mid.x - top.x), abs(mid.y - top.y));
-	std::vector<CanvasPoint> pointsAToC = interpolateCanvasPoints(top, barrierStart, numberOfValuesA);
-	std::vector<CanvasPoint> pointsAToD = interpolateCanvasPoints(top, barrierEnd, numberOfValuesA);
-
-	// Bottom triangle
-	float numberOfValuesB = std::max(abs(bot.x - mid.x), abs(bot.y - mid.y));
-	std::vector<CanvasPoint> pointsBToC = interpolateCanvasPoints(bot, barrierStart, numberOfValuesB);
-	std::vector<CanvasPoint> pointsBToD = interpolateCanvasPoints(bot, barrierEnd, numberOfValuesB);
-
-	//================================================== CREATE TRIANGLES ON TEXTURE =========================================================//
-	// Get texture points
-	TexturePoint top_tx = top.texturePoint;
-	TexturePoint mid_tx = mid.texturePoint;
-	TexturePoint bot_tx = bot.texturePoint;
-
-	// Get barrier for texture
-	// Note: ensure ratio to the barrier for textures is the same as the ratio to the barrier for the triangle
-	float ratioOfEdge = (barrierEnd.y - top.y) / (bot.y - top.y);
-	glm::vec2 topVec2 = glm::vec2(top_tx.x, top_tx.y);
-	glm::vec2 botVec2 = glm::vec2(bot_tx.x, bot_tx.y);
-	glm::vec2 edgeToCut = botVec2 - topVec2;
-	glm::vec2 barrierEndVec2 = topVec2 + (edgeToCut * ratioOfEdge);
-	TexturePoint barrierStart_tx = TexturePoint(mid_tx.x, mid_tx.y);
-	TexturePoint barrierEnd_tx = TexturePoint(barrierEndVec2.x, barrierEndVec2.y);
-	barrierStart.texturePoint = barrierStart_tx;
-	barrierEnd.texturePoint = barrierEnd_tx;
-
-	// Interpolate between the vertices
-	// Top triangle
-	std::vector<TexturePoint> pointsAToC_tx = interpolateTexturePoints(top_tx, barrierStart_tx, numberOfValuesA);
-	std::vector<TexturePoint> pointsAToD_tx = interpolateTexturePoints(top_tx, barrierEnd_tx, numberOfValuesA);
-
-	// Bottom triangle
-	std::vector<TexturePoint> pointsBToC_tx = interpolateTexturePoints(bot_tx, barrierStart_tx, numberOfValuesB);
-	std::vector<TexturePoint> pointsBToD_tx = interpolateTexturePoints(bot_tx, barrierEnd_tx, numberOfValuesB);
-
-	//================================================== MAP TEXTURE PIXELS TO CANVAS =========================================================//
-	// Top triangle
-	for (int i = 0; i < numberOfValuesA; i++) {
-		pointsAToC[i].texturePoint = pointsAToC_tx[i];
-		pointsAToD[i].texturePoint = pointsAToD_tx[i];
-	}
-	// Bot triangle
-	for (int i = 0; i < numberOfValuesB; i++) {
-		pointsBToC[i].texturePoint = pointsBToC_tx[i];
-		pointsBToD[i].texturePoint = pointsBToD_tx[i];
-	}
-
-	//================================================== DRAW PIXELS =========================================================//
-	for (int i = 0; i < numberOfValuesA; i++) {
-		drawLineUsingTexture(window, pointsAToC[i], pointsAToD[i], texture, depthArray);
-	}
-	for (int i = 0; i < numberOfValuesB; i++) {
-		drawLineUsingTexture(window, pointsBToC[i], pointsBToD[i], texture, depthArray);
-	}
-	// Draw middle line
-	//drawLineUsingTexture(window, barrierStart, barrierEnd, texture, depthArray);
-}
-
-// ==================================== TRANSFORM CAMERA ======================================= //
-void translateCamera(std::string axis, float x, glm::mat4& cameraPosition) {
-	glm::mat4 translationMatrix;
-	if (axis == "X") {
-		translationMatrix = glm::mat4(
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-			0, 0, 1, 0,
-			x, 0, 0, 1
-		);
-	}
-	else if (axis == "Y") {
-		translationMatrix = glm::mat4(
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-			0, 0, 1, 0,
-			0, x, 0, 1
-		);
-	}
-	else if (axis == "Z") {
-		translationMatrix = glm::mat4(
-			1, 0, 0, 0,
-			0, 1, 0, 0,
-			0, 0, 1, 0,
-			0, 0, x, 1
-		);
-	}
-	cameraPosition = cameraPosition * translationMatrix;
-}
-
-void rotateCameraPosition(glm::mat4& cameraPosition, glm::mat4 rotationMatrix) {
-	cameraPosition = rotationMatrix * cameraPosition;
-}
-
-void rotateCamera(std::string axis, float theta, glm::mat4& cameraPosition) {
-	glm::mat4 rotationMatrix;
-	if (axis == "X") {
-		rotationMatrix = glm::mat4(
-			1, 0, 0, 0,
-			0, cos(theta), sin(theta), 0,
-			0, -sin(theta), cos(theta), 0,
-			0, 0, 0, 1
-		);
-	}
-	else if (axis == "Y") {
-		rotationMatrix = glm::mat4(
-			cos(theta), 0, -sin(theta), 0,
-			0, 1, 0, 0,
-			sin(theta), 0, cos(theta), 0,
-			0, 0, 0, 1
-		);
-	}
-	else if (axis == "Z") {
-		rotationMatrix = glm::mat4(
-			cos(theta), sin(theta), 0, 0,
-			-sin(theta), cos(theta), 0, 0,
-			0, 0, 1, 0,
-			0, 0, 0, 1
-		);
-	}
-	rotateCameraPosition(cameraPosition, rotationMatrix);
-}
-
-// LookAt function
-void lookAt(glm::mat4& cameraPosition) {
-	// Variables in world
-	glm::vec3 origin = glm::vec3(0.0, 0.0, 0.0);
-	glm::vec3 vertical = glm::vec3(0.0, 1.0, 0.0);
-
-	// forward, up and right are relative to the camera
-	// vertical is relative to the world (0,1,0)
-	glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
-	glm::vec3 forward = glm::normalize(cameraPosVec3 - origin);
-	glm::vec3 right = glm::normalize(glm::cross(vertical, forward));
-	glm::vec3 up = glm::normalize(glm::cross(forward, right));
-	cameraPosition = glm::mat4(glm::vec4(right, 0), glm::vec4(up, 0), glm::vec4(forward, 0), cameraPosition[3]);
-
-}
-
 // ================================================== Wireframe ============================================================= //
 void drawWireframe(DrawingWindow& window, glm::mat4& cameraPosition, float focalLength, std::vector<ModelTriangle> modelTriangles) {
 	window.clearPixels();
@@ -337,8 +95,6 @@ void drawWireframe(DrawingWindow& window, glm::mat4& cameraPosition, float focal
 }
 
 // ================================================== RASTERISED ============================================================= //
-
-// Week 4 - Task 9
 void drawRasterisedScene(
 	DrawingWindow& window,
 	glm::mat4& cameraPosition,
@@ -373,8 +129,10 @@ void drawRasterisedScene(
 }
 
 // =================================================== RAY TRACING ======================================================== //
-// Week 7 - Task 2: Detect when and where a projected ray intersects with a model triangle
-// Barycentric coordinates
+// NOTE: for some reason, it is faster if the ray tracing code was in Renderer.cpp
+std::mutex mtx; // Used for raytracing
+
+// Detect when and where a projected ray intersects with a model triangle using Barycentric coordinates
 RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourceOfRay, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
 
 	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
@@ -404,10 +162,8 @@ RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourc
 	}
 }
 
-// ==================================== DRAW ======================================= //
-
+// If shadow ray hits a triangle, then you need to draw a shadow
 bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, glm::vec3 lightPosition, std::vector<ModelTriangle> triangles, float focalLength) {
-	// If shadow ray hits a triangle, then you need to draw a shadow
 	for (int j = 0; j < triangles.size(); j++) {
 		ModelTriangle triangleCompare = triangles[j];
 		glm::vec3 shadowRay = glm::normalize(lightPosition - point); // to - from, to=light, from=surface of triangle
@@ -438,7 +194,7 @@ glm::vec3 getVertexNormal(std::vector<ModelTriangle> modelTriangles, glm::vec3 v
 	neighbouringNormals.shrink_to_fit();
 	int n = neighbouringNormals.size();
 	glm::vec3 vertexNormal = glm::vec3(neighbouringNormalsSum.x / n, neighbouringNormalsSum.y / n, neighbouringNormalsSum.z / n);
-	
+
 	return vertexNormal;
 }
 
@@ -488,29 +244,6 @@ void cameraFireRays(std::vector<std::vector<RayTriangleIntersection>>& closestTr
 			}
 		}
 	}
-}
-
-float calculateProximityLighting(glm::vec3 lightPosition, glm::vec3 point, float s) { // s = source strength
-	// equation: 1/4*r^2
-	float r = glm::length(point - lightPosition); // distnce from source (think of it as radius)
-	float brightness = s / (4 * M_PI * pow(r, 2));
-	brightness = std::min(float(1.0), brightness);
-	brightness = std::max(float(0.0), brightness);
-	return brightness;
-}
-
-float calculateIncidenceLighting(glm::vec3 shadowRay, glm::vec3 normal) {
-	float dot = glm::dot(normal, normalize(shadowRay));
-	dot = std::min(float(1.0), dot);
-	dot = std::max(float(0.0), dot);
-	return dot;
-}
-
-float calculateSpecularLighting(glm::vec3 view, glm::vec3 incidentRay, glm::vec3 normal, float exponent) {
-	float dot = glm::dot(glm::normalize(incidentRay), normal);
-	glm::vec3 reflectedRay = glm::normalize(incidentRay) - (2.0f * normal * dot);
-	float result = std::max(0.0f, glm::dot(glm::normalize(view), glm::normalize(reflectedRay)));
-	return pow(result, exponent);
 }
 
 void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> modelTriangles, float focalLength, ShadingType shadingType) {

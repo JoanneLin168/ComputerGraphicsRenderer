@@ -37,8 +37,11 @@ add_executable(RedNoise
         libs/sdw/Utils.cpp
         libs/utils/Files.cpp
         libs/utils/Constants.cpp
-        libs/utils/Rasterise.cpp
-        libs/utils/Draw.cpp)
+        libs/utils/Rasteriser.cpp
+        libs/utils/Draw.cpp
+        libs/utils/CameraController.cpp
+        libs/utils/RayTracer.cpp
+        libs/utils/Lighting.cpp)
 
 if (MSVC)
     target_compile_options(RedNoise

@@ -1,8 +1,8 @@
 #include <Constants.h>
+#include <glm/glm.hpp>
 #include <CanvasTriangle.h>
 #include <DrawingWindow.h>
 #include <vector>
-#include <glm/glm.hpp>
 #include <CanvasPoint.h>
 #include <Colour.h>
 #include <CanvasTriangle.h>
