@@ -8,7 +8,7 @@
 //#include <vector>
 //#include <mutex>
 //
-////RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourceOfRay, ModelTriangle triangle, glm::vec3 rayDirection, int index);
+//RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourceOfRay, ModelTriangle triangle, glm::vec3 rayDirection, int index);
 //
 //bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, glm::vec3 lightPosition, std::vector<ModelTriangle> triangles, float focalLength);
 //
@@ -19,7 +19,5 @@
 //	std::vector<ModelTriangle> triangles,
 //	float focalLength,
 //	size_t startY,
-//	size_t endY
-//);
-//
-//void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::mat4& cameraPosition, std::vector<ModelTriangle> modelTriangles, float focalLength, ShadingType shadingType);
+//	size_t endY,
+//	std::mutex& mtx);

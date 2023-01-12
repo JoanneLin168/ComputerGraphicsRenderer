@@ -18,12 +18,12 @@ UTILS_OBJECT_FILES := $(patsubst $(UTILS_DIR)%.cpp, $(BUILD_DIR)/%.o, $(UTILS_SO
 
 # Build settings
 COMPILER := clang++
-COMPILER_OPTIONS := -c -pipe -Wall -std=c++11 # If you have an older compiler, you might have to use -std=c++0x
+COMPILER_OPTIONS := -c -pipe -Wall -std=c++11 -pthread # If you have an older compiler, you might have to use -std=c++0x
 DEBUG_OPTIONS := -ggdb -g3
 FUSSY_OPTIONS := -Werror -pedantic
 SANITIZER_OPTIONS := -O1 -fsanitize=undefined -fsanitize=address -fno-omit-frame-pointer
 SPEEDY_OPTIONS := -Ofast -funsafe-math-optimizations -march=native
-LINKER_OPTIONS :=
+LINKER_OPTIONS := -pthread
 
 # Set up flags
 SDW_COMPILER_FLAGS := -I$(SDW_DIR)
@@ -31,10 +31,10 @@ GLM_COMPILER_FLAGS := -I$(GLM_DIR)
 UTILS_COMPILER_FLAGS := -I$(UTILS_DIR)
 # If you have a manual install of SDL, you might not have sdl2-config installed, so the following line might not work
 # Compiler flags should look something like: -I/usr/local/include/SDL2 -D_THREAD_SAFE
-SDL_COMPILER_FLAGS := $(shell sdl2-config --cflags) -pthread # added here because too lazy to make separate flags
+SDL_COMPILER_FLAGS := $(shell sdl2-config --cflags)
 # If you have a manual install of SDL, you might not have sdl2-config installed, so the following line might not work
 # Linker flags should look something like: -L/usr/local/lib -lSDL2
-SDL_LINKER_FLAGS := $(shell sdl2-config --libs) -pthread # added here because too lazy to make separate flags
+SDL_LINKER_FLAGS := $(shell sdl2-config --libs)
 SDW_LINKER_FLAGS := $(SDW_OBJECT_FILES)
 UTILS_LINKER_FLAGS := $(UTILS_OBJECT_FILES)
 

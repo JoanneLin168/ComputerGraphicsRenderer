@@ -1,11 +1,11 @@
 #include <Constants.h>
 #include <glm/glm.hpp>
 #include <CanvasTriangle.h>
-#include <DrawingWindow.h>
 #include <vector>
 #include <CanvasPoint.h>
 #include <Colour.h>
 #include <CanvasTriangle.h>
+#include <ModelTriangle.h>
 #include <TextureMap.h>
 
 // Interpolate canvas points
@@ -71,4 +71,18 @@ CanvasPoint getCanvasIntersectionPoint(glm::mat4 cameraPosition, glm::vec3 verte
 	CanvasPoint intersectionPoint = CanvasPoint(x_2d, y_2d, z_2d);
 
 	return intersectionPoint;
+}
+
+// Convert ModelTriangles to CanvasTriangles
+std::vector<CanvasTriangle> getCanvasTrianglesFromModelTriangles(std::vector<ModelTriangle> modelTriangles, glm::mat4 cameraPosition, float focalLength) {
+	std::vector<CanvasTriangle> canvasTriangles;
+	for (ModelTriangle mTriangle : modelTriangles) {
+		CanvasPoint a = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[0], focalLength);
+		CanvasPoint b = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[1], focalLength);
+		CanvasPoint c = getCanvasIntersectionPoint(cameraPosition, mTriangle.vertices[2], focalLength);
+		CanvasTriangle cTriangle = CanvasTriangle(a, b, c);
+		canvasTriangles.push_back(cTriangle);
+	}
+	canvasTriangles.shrink_to_fit();
+	return canvasTriangles;
 }

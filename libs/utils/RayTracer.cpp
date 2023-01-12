@@ -5,11 +5,8 @@
 //#include <RayTriangleIntersection.h>
 //#include <mutex>
 //
-//std::mutex mtx; // Used for raytracing
-//
 //// Detect when and where a projected ray intersects with a model triangle using Barycentric coordinates
 //RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourceOfRay, ModelTriangle triangle, glm::vec3 rayDirection, int index) {
-//
 //	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
 //	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
 //	glm::vec3 SPVector = sourceOfRay - triangle.vertices[0];
@@ -78,7 +75,8 @@
 //	std::vector<ModelTriangle> triangles,
 //	float focalLength,
 //	size_t startY,
-//	size_t endY) {
+//	size_t endY,
+//	std::mutex& mtx) {
 //
 //	for (size_t y = startY; y < endY; y++) {
 //		for (size_t x = 0; x < WIDTH; x++) {
