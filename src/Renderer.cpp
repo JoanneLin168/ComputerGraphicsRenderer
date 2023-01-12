@@ -246,6 +246,7 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 			// Add lighting and shadows
 			if (index != -1) {
 				// General
+				bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, modelTriangles, focalLength);
 				glm::vec3 shadowRay = lightPosition - point;
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 				glm::vec3 view = cameraPosVec3 - point; // vector to the camera from the point
@@ -256,7 +257,7 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 				float incidenceLighting = 0;
 				float specularLighting = 0;
 				float brightness = 0;
-				float ambience = 20;
+				float ambience = (shadowRayBlocked) ? 0 : 20;
 
 				if (shadingType == SHADING_FLAT) {
 					// Lighting
@@ -312,6 +313,7 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 					g += 255 * specularLighting;
 					b += 255 * specularLighting;
 				}
+
 				r = glm::clamp(r, 0.0f, 255.0f);
 				g = glm::clamp(g, 0.0f, 255.0f);
 				b = glm::clamp(b, 0.0f, 255.0f);
@@ -409,7 +411,7 @@ int main(int argc, char *argv[]) {
 	int mode = 0;
 
 	// Lighting
-	glm::vec3 lightPosition = (objFile == "sphere.obj") ? glm::vec3(-0.3, 0.8, 1.5) : glm::vec3(0.0, 0.8, 1.0);
+	glm::vec3 lightPosition = (objFile == "sphere.obj") ? glm::vec3(-0.3, 0.8, 1.5) : glm::vec3(0.0, 0.8, 0.5);
 	ShadingType shadingType = SHADING_FLAT;
 
 	while (true) {
