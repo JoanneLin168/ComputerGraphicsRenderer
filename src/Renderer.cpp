@@ -99,7 +99,7 @@ RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourc
 	float t = getAbsolute ? abs(possibleSolution[0]) : possibleSolution[0];
 	float u = possibleSolution[1];
 	float v = possibleSolution[2];
-	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (double(u) + double(v)) <= 1.0 && t >= 0) { // masking u and v to avoid overflow
+	if ((u >= 0.0) && (u <= 1.0) && (v >= 0.0) && (v <= 1.0) && (u + v <= 1.0) && (t > 0)) { // masking u and v to avoid overflow
 		glm::vec3 r = triangle.vertices[0] + (u * (triangle.vertices[1] - triangle.vertices[0])) + (v * (triangle.vertices[2] - triangle.vertices[0]));
 		RayTriangleIntersection rayTriangleIntersection = RayTriangleIntersection(r, t, triangle, index);
 		rayTriangleIntersection.t = t;
@@ -112,20 +112,19 @@ RayTriangleIntersection getClosestIntersection(bool getAbsolute, glm::vec3 sourc
 	}
 }
 
-// If shadow ray hits a triangle, then you need to draw a shadow
-bool isShadowRayBlocked(int index, glm::vec3 point, glm::mat4 cameraPosition, glm::vec3 lightPosition, std::vector<ModelTriangle> triangles, float focalLength) {
+// If a ray is blocked by a triangle (for shadow ray, and to the camera), then return that triangle
+RayTriangleIntersection findBlockingTriangle(int index, glm::vec3 point, glm::vec3 ray, std::vector<ModelTriangle> triangles, float focalLength) {
 	for (int j = 0; j < triangles.size(); j++) {
 		ModelTriangle triangleCompare = triangles[j];
-		glm::vec3 shadowRay = glm::normalize(lightPosition - point); // to - from, to=light, from=surface of triangle
 
-		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(false, point, triangleCompare, shadowRay, j);
+		RayTriangleIntersection rayTriangleIntersection = getClosestIntersection(false, point, triangleCompare, ray, j);
 
 		// float pointToLight = glm::length(lightPosition - point);
-		if (rayTriangleIntersection.distanceFromCamera < glm::length(shadowRay) && rayTriangleIntersection.triangleIndex != index) {
-			return true;
+		if (rayTriangleIntersection.distanceFromCamera < glm::length(ray) && rayTriangleIntersection.triangleIndex != index && rayTriangleIntersection.triangleIndex != -1) {
+			return rayTriangleIntersection;
 		}
 	}
-	return false;
+	return RayTriangleIntersection(glm::vec3(), INFINITY, ModelTriangle(), -1);
 }
 
 glm::vec3 getVertexNormal(std::vector<ModelTriangle> modelTriangles, glm::vec3 vertex) {
@@ -246,19 +245,29 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 			// Add lighting and shadows
 			if (index != -1) {
 				// General
-				bool shadowRayBlocked = isShadowRayBlocked(index, point, cameraPosition, lightPosition, modelTriangles, focalLength);
+				RayTriangleIntersection shadowRayBlockingTriangle = findBlockingTriangle(index, point, glm::normalize(lightPosition - point), modelTriangles, focalLength);
 				glm::vec3 shadowRay = lightPosition - point;
 				glm::vec3 cameraPosVec3 = glm::vec3(cameraPosition[3][0], cameraPosition[3][1], cameraPosition[3][2]);
 				glm::vec3 view = cameraPosVec3 - point; // vector to the camera from the point
 				glm::vec3 incidenceRay = point - lightPosition;
+
+				bool shadowRayBlocked = shadowRayBlockingTriangle.triangleIndex != -1;
+
+				// Check that the triangle normal faces the camera to draw shadow if there is a shadow
+				float dot = glm::dot(triangle.normal, glm::normalize(view));
+				bool drawShadow = shadowRayBlocked && 0 < dot && dot <= 1;
 
 				// Lighting setup
 				float proximityLighting = 0;
 				float incidenceLighting = 0;
 				float specularLighting = 0;
 				float brightness = 0;
-				float ambience = (shadowRayBlocked) ? 0 : 20;
+				float ambience = (drawShadow) ? 0 : 20;
+				float r = 0;
+				float g = 0;
+				float b = 0;
 
+				// Colour
 				if (shadingType == SHADING_FLAT) {
 					// Lighting
 					proximityLighting = calculateProximityLighting(lightPosition, point, LIGHT_STRENGTH);
@@ -301,19 +310,25 @@ void drawRayTracingScene(DrawingWindow& window, glm::vec3& lightPosition, glm::m
 
 				// Colour in hit point
 				brightness = proximityLighting * incidenceLighting;
-				float r = 0;
-				float g = 0;
-				float b = 0;
-				if (triangle.colour.red > 0)   r = ambience + triangle.colour.red * brightness;
-				if (triangle.colour.green > 0) g = ambience + triangle.colour.green * brightness;
-				if (triangle.colour.blue > 0)  b = ambience + triangle.colour.blue * brightness;
-
-				if (incidenceLighting > 0 && proximityLighting > 0 && specularLighting > 0) {
-					r += 255 * specularLighting;
-					g += 255 * specularLighting;
-					b += 255 * specularLighting;
+				// If no particular shading type, just set to default colours
+				if (shadingType == SHADING_NONE) {
+					if (!drawShadow) {
+						r = triangle.colour.red;
+						g = triangle.colour.green;
+						b = triangle.colour.blue;
+					}
 				}
-
+				else {
+					if (triangle.colour.red > 0)   r = ambience + triangle.colour.red * brightness;
+					if (triangle.colour.green > 0) g = ambience + triangle.colour.green * brightness;
+					if (triangle.colour.blue > 0)  b = ambience + triangle.colour.blue * brightness;
+					if (incidenceLighting > 0 && proximityLighting > 0 && specularLighting > 0) {
+						r += 255 * specularLighting;
+						g += 255 * specularLighting;
+						b += 255 * specularLighting;
+					}
+				}
+				
 				r = glm::clamp(r, 0.0f, 255.0f);
 				g = glm::clamp(g, 0.0f, 255.0f);
 				b = glm::clamp(b, 0.0f, 255.0f);
@@ -378,12 +393,13 @@ void handleEvent(SDL_Event event, DrawingWindow &window, int& mode, glm::vec3& l
 	}
 }
 
-int main(int argc, char *argv[]) {
-	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
-	SDL_Event event;
+// Read from OBJ and MTL files
+std::tuple<std::vector<std::string>,
+	std::unordered_map<std::string, Colour>,
+	std::unordered_map<std::string, TextureMap>,
+	std::vector<ModelTriangle>> readFromFiles(std::string objFile, std::string mtlFile) {
 
 	// Week 4 - Task 2
-	std::string objFile = "sphere.obj";
 	std::tuple<std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<glm::vec3>, std::vector<std::string>> objResult = readOBJFile(objFile, 0.35);
 	std::vector<glm::vec3> vertices = std::get<0>(objResult);
 	std::vector<glm::vec3> facets = std::get<1>(objResult);
@@ -392,12 +408,27 @@ int main(int argc, char *argv[]) {
 	std::vector<std::string> colourNames = std::get<4>(objResult);
 
 	// Week 4 - Task 3
-	std::string mtlFile = "textured-cornell-box.mtl";
 	std::tuple<std::unordered_map<std::string, Colour>, std::unordered_map<std::string, TextureMap>> mtlMaps = readMTLFile(mtlFile);
 	std::unordered_map<std::string, Colour> coloursMap = std::get<0>(mtlMaps);
 	std::unordered_map<std::string, TextureMap> texturesMap = std::get<1>(mtlMaps);
 
 	std::vector<ModelTriangle> modelTriangles = generateModelTriangles(vertices, facets, vertices_tx, facets_tx, colourNames, coloursMap, texturesMap);
+
+	return std::make_tuple(colourNames, coloursMap, texturesMap, modelTriangles);
+}
+
+int main(int argc, char *argv[]) {
+	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
+	SDL_Event event;
+
+	// Read from files
+	std::string objFile = "sphere.obj";
+	std::string mtlFile = "cornell-box.mtl";
+	std::tuple<std::vector<std::string>, std::unordered_map<std::string, Colour>, std::unordered_map<std::string, TextureMap>, std::vector<ModelTriangle>> fileResults = readFromFiles(objFile, mtlFile);
+	std::vector<std::string> colourNames = std::get<0>(fileResults);
+	std::unordered_map<std::string, Colour> coloursMap = std::get<1>(fileResults);
+	std::unordered_map<std::string, TextureMap> texturesMap = std::get<2>(fileResults);
+	std::vector<ModelTriangle> modelTriangles = std::get<3>(fileResults);
 
 	// Variables for camera
 	glm::mat4 cameraPosition = glm::mat4(
@@ -406,15 +437,32 @@ int main(int argc, char *argv[]) {
 		0, 0, 1, 0,
 		0, 0, 4, 1 // last column vector stores x, y, z
 	);
+	if (objFile == "sphere.obj") {
+		cameraPosition = glm::mat4(
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 1, 0,
+			0, 0.5, 2.5, 1 // last column vector stores x, y, z
+		);
+	}
 	float focalLength = 2.0;
 	bool toOrbit = false;
 	int mode = 0;
 
 	// Lighting
 	glm::vec3 lightPosition = (objFile == "sphere.obj") ? glm::vec3(-0.3, 0.8, 1.5) : glm::vec3(0.0, 0.8, 0.5);
-	ShadingType shadingType = SHADING_FLAT;
+	ShadingType shadingType = SHADING_NONE;
 
-	while (true) {
+	// Change parameters here for video
+	bool renderVideo = true;
+	bool run = true;
+	toOrbit = true;
+	int numOfFrames = 360;
+	int currFrameNum = 0;
+	int cumFrameNum = 0;
+	int iteration = 0;
+
+	while (run) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window, mode, lightPosition, cameraPosition, toOrbit, shadingType);
 		if (mode == 0) drawWireframe(window, cameraPosition, focalLength, modelTriangles);
@@ -426,12 +474,65 @@ int main(int argc, char *argv[]) {
 		//lookAt(cameraPosition);
 
 		// For debugging
-		CanvasPoint lightCanvasPoint = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
+		/*CanvasPoint lightCanvasPoint = getCanvasIntersectionPoint(cameraPosition, lightPosition, focalLength);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
-		if (round(lightCanvasPoint.x) < WIDTH && round(lightCanvasPoint.y) < HEIGHT) window.setPixelColour(round(lightCanvasPoint.x), round(lightCanvasPoint.y), lightColour);
+		if (round(lightCanvasPoint.x) < WIDTH && round(lightCanvasPoint.y) < HEIGHT) window.setPixelColour(round(lightCanvasPoint.x), round(lightCanvasPoint.y), lightColour);*/
 		
 
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
+
+		// Save video
+		if (renderVideo) {
+			// Configurations to go through: rasterise wireframe (i=0), rasterise colour, raytracing basic
+			if (currFrameNum < numOfFrames) {
+				std::string frameNumStr = std::to_string(cumFrameNum);
+				std::string modeStr = std::to_string(mode);
+				int zeroPadCount = 5 - frameNumStr.size();
+				std::string zeroPadStr = std::string(zeroPadCount, '0');
+				std::string outputName = "output_sphere_" + zeroPadStr + frameNumStr + ".ppm";
+				window.savePPM("output/" + outputName);
+				currFrameNum++;
+				cumFrameNum++;
+			}
+			else {
+				// Change configuration here
+				// For cornell box:
+				//switch (iteration) {
+				//	case 0: mode = 1; break;
+				//	case 1: // use textures
+				//		objFile = "textured-cornell-box.obj";
+				//		mtlFile = "textured-cornell-box.mtl";
+				//		fileResults = readFromFiles(objFile, mtlFile);
+				//		colourNames = std::get<0>(fileResults);
+				//		coloursMap = std::get<1>(fileResults);
+				//		texturesMap = std::get<2>(fileResults);
+				//		modelTriangles = std::get<3>(fileResults);
+				//		break;
+				//	case 2: 
+				//		mode = 2;
+				//		objFile = "cornell-box.obj";
+				//		mtlFile = "cornell-box.mtl";
+				//		fileResults = readFromFiles(objFile, mtlFile);
+				//		colourNames = std::get<0>(fileResults);
+				//		coloursMap = std::get<1>(fileResults);
+				//		texturesMap = std::get<2>(fileResults);
+				//		modelTriangles = std::get<3>(fileResults);
+				//		break;
+				//	case 3: run = false; break;
+				//}
+
+				// For sphere:
+				switch (iteration) {
+					case 0: mode = 1; break;
+					case 1: mode = 2; shadingType = SHADING_FLAT; break;
+					case 2: shadingType = SHADING_GOURAUD; break; 
+					case 3: shadingType = SHADING_PHONG; break;
+					case 4: run = false; break;
+				}
+				currFrameNum = 0;
+				iteration++;
+			}
+		}
 	}
 }

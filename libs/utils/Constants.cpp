@@ -13,4 +13,4 @@ const float ANGLE = float((1.0 / 360.0) * (2 * M_PI));
 const float LIGHT_STRENGTH = 10;
 const float SPECULAR_EXPONENT = 32; // Note: increase this to 256 for cornell box
 
-enum ShadingType { SHADING_FLAT, SHADING_GOURAUD, SHADING_PHONG };
+enum ShadingType { SHADING_NONE, SHADING_FLAT, SHADING_GOURAUD, SHADING_PHONG };
